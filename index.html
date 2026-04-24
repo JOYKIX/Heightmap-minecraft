@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Générateur de Heightmap Minecraft</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>Générateur de Heightmap Minecraft</h1>
+        <p>1 pixel = 1 bloc en jeu (IG).</p>
+      </header>
+
+      <section class="controls">
+        <label>
+          Largeur (blocs)
+          <input id="width" type="number" min="64" max="2048" step="1" value="512" />
+        </label>
+        <label>
+          Hauteur (blocs)
+          <input id="height" type="number" min="64" max="2048" step="1" value="512" />
+        </label>
+        <label>
+          % de terres (plein)
+          <input id="land" type="number" min="5" max="95" step="1" value="40" />
+        </label>
+        <label>
+          % d'océan
+          <input id="ocean" type="number" min="5" max="95" step="1" value="50" />
+        </label>
+        <label>
+          % de rivière (intensité)
+          <input id="river" type="number" min="0" max="30" step="1" value="8" />
+        </label>
+        <label>
+          Seed
+          <input id="seed" type="text" value="minecraft-heightmap" />
+        </label>
+        <button id="generate">Générer</button>
+        <button id="download">Télécharger PNG</button>
+      </section>
+
+      <section class="meta">
+        <p id="stats"></p>
+      </section>
+
+      <section class="preview">
+        <canvas id="canvas" width="512" height="512"></canvas>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
