@@ -1,0 +1,67 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, sans-serif;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+}
+
+input,
+button {
+  border-radius: 8px;
+  border: 1px solid #334155;
+  padding: 0.6rem;
+  background: #1e293b;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:hover {
+  background: #334155;
+}
+
+.preview {
+  margin-top: 1rem;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  overflow: auto;
+  background: #020617;
+}
+
+canvas {
+  image-rendering: pixelated;
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.meta {
+  color: #93c5fd;
+}
