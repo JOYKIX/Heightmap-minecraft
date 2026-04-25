@@ -1,12 +1,11 @@
 export function renderStats(stats, el) {
   const biomeLines = Object.entries(stats.biomes)
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => `<li>${k}: ${v.toFixed(1)}%</li>`)
+    .sort((a, b) => b[1].real - a[1].real)
+    .map(([k, v]) => `<li>${k}: cible ${formatTarget(v.target)} / réel ${v.real.toFixed(1)}%</li>`)
     .join('');
 
-  const validationLine = stats.error
-    ? `<li style="color:#f88;">Erreur validation: ${stats.error}</li>`
-    : '';
+  const validationLine = stats.error ? `<li style="color:#f88;">Erreur validation: ${stats.error}</li>` : '';
+  const warnings = (stats.biomeWarnings || []).map((w) => `<li style="color:#ffb56b;">⚠ ${w}</li>`).join('');
 
   el.innerHTML = `
     <h3>Validation finale</h3>
@@ -19,13 +18,20 @@ export function renderStats(stats, el) {
       <li>Sea level: ${stats.seaLevel}</li>
       <li>Gray sea level: ${stats.graySeaLevel}</li>
       <li>Nombre de biomes: ${stats.biomeCount}</li>
+      <li>Nombre de rivières: ${stats.riverCount}</li>
       <li>Temps génération: ${stats.generationMs.toFixed(0)} ms</li>
       <li>Compatibilité WorldPainter: ${stats.worldPainterCompatible ? 'Oui' : 'Non'}</li>
       ${validationLine}
+      ${warnings}
     </ul>
-    <h4>Biomes réels</h4>
+    <h4>Biomes cibles vs réels</h4>
     <ul>${biomeLines}</ul>
   `;
+}
+
+function formatTarget(v) {
+  if (v == null) return 'n/a';
+  return `${v.toFixed(1)}%`;
 }
 
 export function renderWorldPainterSettings(config, el) {

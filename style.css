@@ -80,3 +80,21 @@ button:hover { border-color: var(--accent); }
 }
 
 ul { padding-left: 18px; }
+
+fieldset {
+  border: 1px solid #3a3a3a;
+  margin: 10px 0;
+  padding: 8px;
+}
+
+.biome-row {
+  display: grid;
+  grid-template-columns: 1.4fr repeat(4, 1fr);
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.biome-row input[type='number'] {
+  width: 70px;
+}

@@ -20,6 +20,8 @@ export function carveRivers(heightFloat, landMask, config, biomeMap, biomeIds) {
     const ok = traceAndCarveRiver(heightFloat, landMask, config, biomeMap, biomeIds, sources[s], rng);
     if (ok) carved++;
   }
+
+  return { rivers: carved, attemptedSources: sources.length, targetSources };
 }
 
 function traceAndCarveRiver(heightFloat, landMask, config, biomeMap, biomeIds, start, rng) {

@@ -33,6 +33,7 @@ async function initApp() {
     ]);
 
     ui.populatePresets();
+    ui.populateBiomeControls();
     ui.initPreviewModes();
     statsUi.renderWorldPainterSettings(baseConfig, document.getElementById('wpSettings'));
 

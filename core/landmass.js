@@ -203,3 +203,39 @@ export function validateNoLandTouchesEdges(mask, width, height) {
   }
   return true;
 }
+
+export function generateGeographySkeleton(config, landMask, distanceToCoast) {
+  const { width, height, seed } = config;
+  const mainRidgeLine = new Float32Array(width * height);
+  const mountainCore = new Float32Array(width * height);
+  const lowlandBasins = new Float32Array(width * height);
+  const coastalPlains = new Float32Array(width * height);
+  const riverBasins = new Float32Array(width * height);
+  const plateauZones = new Float32Array(width * height);
+
+  const ridgeNoise = createValueNoise2D(`${seed}:geo:ridge`, 96);
+  const basinNoise = createValueNoise2D(`${seed}:geo:basin`, 84);
+  const plateauNoise = createValueNoise2D(`${seed}:geo:plateau`, 76);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!landMask[i]) continue;
+      const nx = x / width;
+      const ny = y / height;
+      const inland = Math.min(1, distanceToCoast[i] / 46);
+      const ridge = Math.max(0, 1 - Math.abs(fbm2D(ridgeNoise, nx, ny, 4, 2.0, 0.52, 1.8) - 0.5) * 3.4);
+      const basin = fbm2D(basinNoise, nx, ny, 3, 2.0, 0.55, 1.2);
+      const plateau = Math.max(0, fbm2D(plateauNoise, nx * 0.9, ny * 1.1, 3, 2.0, 0.5, 1.5) - 0.52) * 2.1;
+
+      mainRidgeLine[i] = ridge * inland;
+      mountainCore[i] = Math.max(0, ridge * inland * inland);
+      lowlandBasins[i] = Math.max(0, (1 - basin) * (1 - inland * 0.7));
+      coastalPlains[i] = Math.max(0, (1 - inland) * (0.75 + basin * 0.25));
+      riverBasins[i] = Math.max(0, lowlandBasins[i] * 0.6 + (1 - ridge) * 0.4);
+      plateauZones[i] = plateau * inland;
+    }
+  }
+
+  return { mainRidgeLine, mountainCore, lowlandBasins, coastalPlains, riverBasins, plateauZones };
+}
