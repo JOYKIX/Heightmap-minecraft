@@ -1,13 +1,14 @@
 import { createValueNoise2D, fbm2D } from './noise.js';
 import {
   generateLandPotential,
-  applyOceanBorder,
+  applyOceanBorderMask,
   createLandMaskByCoverage,
   cleanupLandMask,
+  enforceOceanEdges,
   validateNoLandTouchesEdges
 } from './landmass.js';
 import { computeDistanceFields, shapeOceanAndCoast } from './coast.js';
-import { generateBiomeMap, calculateBiomeStats, getBiomeProfileByIndex } from './biomes.js';
+import { generateBiomeMap, generateClimateMaps, calculateBiomeStats, getBiomeProfileByIndex } from './biomes.js';
 import { carveRivers } from './rivers.js';
 import { applyLightErosion } from './erosion.js';
 import { cleanupHeights, quantizeToMinecraftY, validateHeightmap } from './cleanup.js';
@@ -18,89 +19,81 @@ export function generateTerrain(config) {
   const steps = [];
   const mark = (label) => steps.push(label);
 
-  mark('1. Lire config');
+  mark('1. Lire la config utilisateur');
   const finalConfig = { ...config };
 
-  mark('2. Initialiser seed');
+  let landPotential;
+  let cleanMask;
+  let coverageStats;
 
-  mark('3. Créer landPotential');
-  const landPotential = generateLandPotential(finalConfig);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    mark('2. Générer landPotential');
+    landPotential = generateLandPotential(finalConfig);
 
-  mark('4. Appliquer ocean border');
-  applyOceanBorder(landPotential, finalConfig);
+    mark('3. Appliquer ocean border obligatoire');
+    applyOceanBorderMask(landPotential, finalConfig);
 
-  mark('5. Créer landMask');
-  const { mask: landMask } = createLandMaskByCoverage(landPotential, finalConfig);
+    mark('4. Créer landMask selon le % de terre');
+    const coverage = createLandMaskByCoverage(landPotential, finalConfig);
+    coverageStats = coverage;
 
-  mark('6. Nettoyer landMask');
-  const cleanMask = cleanupLandMask(landMask, finalConfig.width, finalConfig.height, 2);
+    mark('5. Nettoyer le landMask');
+    cleanMask = cleanupLandMask(coverage.mask, finalConfig.width, finalConfig.height, 3);
 
-  mark('7. Calculer distanceToCoast / distanceToLand');
+    mark('6. Vérifier que la terre ne touche aucun bord');
+    enforceOceanEdges(cleanMask, finalConfig.width, finalConfig.height);
+    if (validateNoLandTouchesEdges(cleanMask, finalConfig.width, finalConfig.height)) break;
+  }
+
+  mark('7. Calculer distanceToCoast');
+  mark('8. Calculer distanceToLand');
   const { distanceToCoast, distanceToLand } = computeDistanceFields(cleanMask, finalConfig.width, finalConfig.height);
 
-  mark('8. Générer biomeMap');
-  const { biomeMap, biomeIds } = generateBiomeMap(finalConfig, { landMask: cleanMask, distanceToCoast });
+  mark('9. Générer climate maps');
+  const { moistureMap, temperatureMap, elevationIntentMap } = generateClimateMaps(finalConfig, {
+    landMask: cleanMask,
+    distanceToCoast
+  });
 
-  mark('9. Générer baseHeight float');
-  const baseHeight = new Float32Array(finalConfig.width * finalConfig.height);
-  const macroNoise = createValueNoise2D(`${finalConfig.seed}:height:macro`, 128);
-  const mesoNoise = createValueNoise2D(`${finalConfig.seed}:height:meso`, 192);
-  const microNoise = createValueNoise2D(`${finalConfig.seed}:height:micro`, 256);
+  mark('10. Générer biomeMap');
+  const { biomeMap, biomeIds } = generateBiomeMap(finalConfig, {
+    landMask: cleanMask,
+    distanceToCoast,
+    moistureMap,
+    temperatureMap,
+    elevationIntentMap
+  });
 
-  for (let y = 0; y < finalConfig.height; y++) {
-    for (let x = 0; x < finalConfig.width; x++) {
-      const i = y * finalConfig.width + x;
-      const nx = x / finalConfig.width;
-      const ny = y / finalConfig.height;
-      const macro = fbm2D(macroNoise, nx, ny, 4, 2, 0.52, 1.2);
-      const meso = fbm2D(mesoNoise, nx, ny, 3, 2.15, 0.56, 3.2);
-      const micro = fbm2D(microNoise, nx, ny, 2, 2.1, 0.5, 8.0);
-      baseHeight[i] = finalConfig.seaLevel + (macro - 0.5) * 55 + (meso - 0.5) * 20 + (micro - 0.5) * 6;
-    }
-  }
+  mark('11. Générer baseHeight');
+  const baseHeight = buildBaseHeights(finalConfig, cleanMask, biomeMap, biomeIds, distanceToCoast, elevationIntentMap);
 
-  mark('10. Appliquer relief par biome');
-  for (let i = 0; i < baseHeight.length; i++) {
-    if (!cleanMask[i]) continue;
-    const profile = getBiomeProfileByIndex(biomeMap[i], biomeIds);
-    baseHeight[i] = baseHeight[i] * (1 - profile.flatness * 0.15) + profile.preferredAltitude * 0.15;
-    baseHeight[i] += (profile.roughness - 0.5) * 8;
-  }
+  mark('12. Appliquer relief par biome');
+  applyBiomeRelief(baseHeight, finalConfig, cleanMask, biomeMap, biomeIds);
 
-  mark('11. Générer montagnes');
-  const ridgeNoise = createValueNoise2D(`${finalConfig.seed}:height:ridge`, 128);
-  for (let y = 0; y < finalConfig.height; y++) {
-    for (let x = 0; x < finalConfig.width; x++) {
-      const i = y * finalConfig.width + x;
-      if (!cleanMask[i]) continue;
-      const profile = getBiomeProfileByIndex(biomeMap[i], biomeIds);
-      const dCoast = Math.min(32, distanceToCoast[i]);
-      const inland = dCoast / 32;
-      const r = Math.abs(fbm2D(ridgeNoise, x / finalConfig.width, y / finalConfig.height, 4, 2, 0.5, 2) - 0.5);
-      const ridge = Math.max(0, 1 - r * 3.5);
-      baseHeight[i] += ridge * profile.mountainInfluence * inland * 95;
-    }
-  }
+  mark('13. Ajouter montagnes');
+  addMountains(baseHeight, finalConfig, cleanMask, biomeMap, biomeIds, distanceToCoast);
 
-  mark('12. Générer rivières');
+  mark('14. Ajouter vallées');
+  addValleys(baseHeight, finalConfig, cleanMask);
+
+  mark('15. Ajouter rivières');
   carveRivers(baseHeight, cleanMask, finalConfig, biomeMap, biomeIds);
 
-  mark('13. Appliquer érosion légère');
-  applyLightErosion(baseHeight, finalConfig.width, finalConfig.height, 0.18);
+  mark('16. Ajouter érosion légère');
+  applyLightErosion(baseHeight, finalConfig.width, finalConfig.height, 0.16);
 
-  mark('14. Nettoyer heightmap');
+  mark('17. Nettoyer les artefacts');
   shapeOceanAndCoast(baseHeight, cleanMask, distanceToLand, finalConfig.seaLevel);
   cleanupHeights(baseHeight, finalConfig, cleanMask);
 
-  mark('15. Quantifier en Y entier');
+  mark('18. Quantifier en Y entier');
   const yInt = quantizeToMinecraftY(baseHeight, finalConfig.minY, finalConfig.maxY);
 
-  mark('16. Convertir en grayscale');
+  mark('19. Convertir en grayscale');
   const grayscale = heightToGrayscale(yInt, finalConfig.minY, finalConfig.maxY);
 
-  mark('17. Render preview');
-
-  mark('18. Export PNG');
+  mark('20. Afficher preview');
+  mark('21. Exporter PNG');
 
   const biomeStats = calculateBiomeStats(biomeMap, biomeIds);
   const validation = validateHeightmap(yInt, finalConfig, cleanMask);
@@ -113,16 +106,134 @@ export function generateTerrain(config) {
     targetLand: finalConfig.landCoverage * 100,
     realLand: (landPixels / total) * 100,
     realOcean: (oceanPixels / total) * 100,
+    preCleanupRealLand: (coverageStats?.realLand ?? 0) * 100,
     edgeTouch: !validateNoLandTouchesEdges(cleanMask, finalConfig.width, finalConfig.height),
     minAltitude: validation.min,
     maxAltitude: validation.max,
     seaLevel: finalConfig.seaLevel,
     graySeaLevel: minecraftYToGray(finalConfig.seaLevel, finalConfig.minY, finalConfig.maxY),
+    biomeCount: biomeIds.length,
     biomes: biomeStats,
     generationMs: performance.now() - started,
     worldPainterCompatible: validation.worldPainterCompatible,
     pipelineSteps: steps
   };
 
-  return { config: finalConfig, landMask: cleanMask, distanceToCoast, distanceToLand, biomeMap, biomeIds, yInt, grayscale, stats };
+  if (!validation.worldPainterCompatible) {
+    stats.error = 'Validation échouée: heightmap non compatible WorldPainter.';
+  }
+
+  return {
+    config: finalConfig,
+    landMask: cleanMask,
+    distanceToCoast,
+    distanceToLand,
+    moistureMap,
+    temperatureMap,
+    elevationIntentMap,
+    biomeMap,
+    biomeIds,
+    yInt,
+    grayscale,
+    stats
+  };
+}
+
+function buildBaseHeights(config, landMask, biomeMap, biomeIds, distanceToCoast, elevationIntentMap) {
+  const { width, height, seaLevel } = config;
+  const out = new Float32Array(width * height);
+
+  const macroNoise = createValueNoise2D(`${config.seed}:height:macro`, 128);
+  const mesoNoise = createValueNoise2D(`${config.seed}:height:meso`, 192);
+  const microNoise = createValueNoise2D(`${config.seed}:height:micro`, 256);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!landMask[i]) {
+        out[i] = seaLevel - 8;
+        continue;
+      }
+
+      const nx = x / width;
+      const ny = y / height;
+      const macro = fbm2D(macroNoise, nx, ny, 4, 2.0, 0.5, 1.1);
+      const meso = fbm2D(mesoNoise, nx, ny, 3, 2.1, 0.55, 3.4);
+      const micro = fbm2D(microNoise, nx, ny, 2, 2.0, 0.55, 8.5);
+      const inland = Math.min(1, distanceToCoast[i] / 24);
+      const profile = getBiomeProfileByIndex(biomeMap[i], biomeIds);
+
+      let h = seaLevel +
+        (macro - 0.5) * 48 +
+        (meso - 0.5) * 22 +
+        (micro - 0.5) * 6 +
+        inland * 16 +
+        elevationIntentMap[i] * 38;
+
+      h = h * (1 - profile.flatness * 0.1) + profile.preferredAltitude * 0.1;
+      out[i] = h;
+    }
+  }
+
+  return out;
+}
+
+function applyBiomeRelief(baseHeight, config, landMask, biomeMap, biomeIds) {
+  for (let i = 0; i < baseHeight.length; i++) {
+    if (!landMask[i]) continue;
+    const profile = getBiomeProfileByIndex(biomeMap[i], biomeIds);
+    const roughBoost = (profile.roughness - 0.5) * 12;
+    const flatten = profile.flatness * 0.22;
+    baseHeight[i] = baseHeight[i] * (1 - flatten) + profile.preferredAltitude * flatten + roughBoost;
+
+    if (baseHeight[i] < profile.minAltitude) {
+      baseHeight[i] = profile.minAltitude + (baseHeight[i] - profile.minAltitude) * 0.45;
+    }
+    if (baseHeight[i] > profile.maxAltitude) {
+      baseHeight[i] = profile.maxAltitude + (baseHeight[i] - profile.maxAltitude) * 0.25;
+    }
+  }
+}
+
+function addMountains(baseHeight, config, landMask, biomeMap, biomeIds, distanceToCoast) {
+  const ridgeNoise = createValueNoise2D(`${config.seed}:height:ridge`, 96);
+  const chainNoise = createValueNoise2D(`${config.seed}:height:chain`, 72);
+  const { width, height } = config;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!landMask[i]) continue;
+
+      const profile = getBiomeProfileByIndex(biomeMap[i], biomeIds);
+      if (profile.mountainInfluence <= 0.05) continue;
+
+      const nx = x / width;
+      const ny = y / height;
+      const ridge = Math.max(0, 1 - Math.abs(fbm2D(ridgeNoise, nx, ny, 4, 2.0, 0.5, 2.2) - 0.5) * 4.2);
+      const chain = fbm2D(chainNoise, nx * 0.85, ny * 1.15, 3, 2.0, 0.52, 1.4);
+      const inland = Math.min(1, distanceToCoast[i] / 32);
+      const mass = ridge * chain * inland * profile.mountainInfluence;
+      baseHeight[i] += mass * 110;
+    }
+  }
+}
+
+function addValleys(baseHeight, config, landMask) {
+  const valleyNoise = createValueNoise2D(`${config.seed}:height:valley`, 128);
+  const { width, height } = config;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!landMask[i]) continue;
+
+      const nx = x / width;
+      const ny = y / height;
+      const n = fbm2D(valleyNoise, nx, ny, 4, 2.0, 0.5, 2.4);
+      const valleyMask = Math.max(0, 1 - Math.abs(n - 0.5) * 6.5);
+      if (valleyMask <= 0) continue;
+      baseHeight[i] -= valleyMask * 18;
+    }
+  }
 }
