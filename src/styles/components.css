@@ -1,0 +1,18 @@
+h1 { font-size: 1.35rem; margin: 0 0 .3rem; }
+h2 { margin: 0 0 .7rem; font-size: 1rem; }
+.subtitle { margin: 0 0 1rem; color: var(--muted); font-size: .88rem; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: .85rem; margin-bottom: .8rem; }
+.row.two { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+label { display: flex; flex-direction: column; gap: .32rem; font-size: .82rem; margin-bottom: .5rem; color: var(--muted); }
+.check { flex-direction: row; align-items: center; gap: .4rem; }
+
+input, select, button { width: 100%; border-radius: 10px; border: 1px solid var(--line); padding: .56rem .62rem; background: rgba(7, 11, 20, .7); color: var(--text); font: inherit; }
+input[type='range'] { padding: 0; accent-color: var(--accent); }
+button { cursor: pointer; font-weight: 650; border: none; }
+.primary { background: linear-gradient(120deg, var(--accent), #7a7dff); }
+.secondary { background: rgba(18, 27, 43, 0.95); border: 1px solid rgba(130, 150, 190, 0.4); }
+.seed-row { display: grid; grid-template-columns: 1fr 150px; gap: .5rem; align-items: end; }
+.progress-wrap { width: 100%; height: 10px; background: #0a1020; border-radius: 999px; border: 1px solid var(--line); margin-top: .35rem; }
+#progress { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #58e8c1); border-radius: 999px; transition: width .2s; }
+#stats, #config-summary, #wp-compatibility, #biome-results { list-style: none; padding-left: 0; margin: 0; display: grid; gap: .35rem; font-size: .87rem; }
+#stats li, #config-summary li, #wp-compatibility li, #biome-results li { padding: .45rem .52rem; background: rgba(12, 18, 31, .78); border-radius: 9px; border: 1px solid rgba(113, 128, 159, .21); }
