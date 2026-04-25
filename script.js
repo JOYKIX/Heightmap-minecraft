@@ -25,10 +25,10 @@ const RELIEF = {
 };
 const RIVERS = { none: 0, few: 2, medium: 5, many: 9 };
 const QUALITY = {
-  fast: { octaves: 3, erosionIters: 1 },
-  balanced: { octaves: 5, erosionIters: 2 },
-  high: { octaves: 6, erosionIters: 3 },
-  extreme: { octaves: 7, erosionIters: 4 }
+  fast: { octaves: 3, erosionIters: 1, hydraulicIters: 1, thermalIters: 1, riverPasses: 1, microRelief: 0.35 },
+  balanced: { octaves: 5, erosionIters: 2, hydraulicIters: 2, thermalIters: 2, riverPasses: 2, microRelief: 0.55 },
+  high: { octaves: 6, erosionIters: 3, hydraulicIters: 3, thermalIters: 3, riverPasses: 3, microRelief: 0.75 },
+  extreme: { octaves: 7, erosionIters: 5, hydraulicIters: 5, thermalIters: 4, riverPasses: 4, microRelief: 1 }
 };
 
 const WORLD_PRESETS = {
@@ -39,9 +39,9 @@ const WORLD_PRESETS = {
 };
 
 const BIOME_PRESETS = {
-  balanced: { label: 'Balanced', weights: { ocean: 1, beach: 1, plains: 1, forest: 1, desert: 1, taiga: 1, mountains: 1, river: 1 } },
-  temperate: { label: 'Tempéré', weights: { ocean: 1, beach: 1, plains: 1.2, forest: 1.3, desert: 0.5, taiga: 0.9, mountains: 0.8, river: 1 } },
-  wild: { label: 'Sauvage', weights: { ocean: 1, beach: 1, plains: 0.8, forest: 1.1, desert: 0.9, taiga: 1, mountains: 1.6, river: 1 } }
+  balanced: { label: 'Balanced', weights: { ocean: 1, beach: 1, plains: 1, forest: 1, desert: 1, taiga: 1, mountains: 1, river: 1, wetlands: 1, plateau: 1 } },
+  temperate: { label: 'Tempéré', weights: { ocean: 1, beach: 1, plains: 1.2, forest: 1.3, desert: 0.5, taiga: 0.9, mountains: 0.8, river: 1, wetlands: 1.1, plateau: 1 } },
+  wild: { label: 'Sauvage', weights: { ocean: 1, beach: 1, plains: 0.8, forest: 1.1, desert: 0.9, taiga: 1, mountains: 1.6, river: 1, wetlands: 0.9, plateau: 1.2 } }
 };
 
 const BIOME_COLORS = {
@@ -52,6 +52,8 @@ const BIOME_COLORS = {
   desert: [219, 194, 113],
   taiga: [90, 126, 118],
   mountains: [120, 120, 120],
+  plateau: [157, 145, 112],
+  wetlands: [84, 146, 118],
   river: [52, 117, 204]
 };
 
@@ -172,14 +174,16 @@ function getBiomeWeights() {
 /* ==============================
    6. BIOMES
 ================================ */
-function classifyBiome(heightNorm, moisture, temperature, isRiver) {
+function classifyBiome(heightNorm, moisture, temperature, slope, basin, isRiver) {
   if (isRiver) return 'river';
-  if (heightNorm < 0.45) return 'ocean';
-  if (heightNorm < 0.48) return 'beach';
-  if (heightNorm > 0.82) return 'mountains';
-  if (temperature > 0.65 && moisture < 0.4) return 'desert';
-  if (temperature < 0.35) return 'taiga';
-  return moisture > 0.55 ? 'forest' : 'plains';
+  if (heightNorm < 0.47) return 'ocean';
+  if (heightNorm < 0.5) return 'beach';
+  if (basin > 0.65 && moisture > 0.62 && slope < 0.06) return 'wetlands';
+  if (heightNorm > 0.84 && slope < 0.08) return 'plateau';
+  if (heightNorm > 0.82 || slope > 0.18) return 'mountains';
+  if (temperature > 0.68 && moisture < 0.42) return 'desert';
+  if (temperature < 0.34) return 'taiga';
+  return moisture > 0.56 ? 'forest' : 'plains';
 }
 
 /* ==============================
@@ -194,51 +198,61 @@ function generateTerrain() {
     readSettingsFromControls();
     validateSettings(state.settings);
 
-    setStep('Initialisation...', 0.02);
     const size = state.settings.mapSize;
     const seedBase = hashString(state.settings.seed || 'seed');
-    const octaves = QUALITY[state.settings.qualityMode]?.octaves ?? 5;
-    const rand = mulberry32(seedBase ^ 0x9e3779b9);
+    const quality = QUALITY[state.settings.qualityMode] || QUALITY.balanced;
+    const relief = RELIEF[state.settings.reliefStyle] * state.settings.mountainScale;
 
+    setStep('Initialisation du moteur géologique...', 0.03);
     const height = new Float32Array(size * size);
     const riverMask = new Uint8Array(size * size);
     const biomeMap = new Uint8Array(size * size);
+    const flowTo = new Int32Array(size * size).fill(-1);
 
-    setStep('Base terrain...', 0.2);
-    const landCoverage = LAND_COVERAGE[state.settings.landCoverage];
-    const border = OCEAN_BORDER[state.settings.oceanBorder];
-    const relief = RELIEF[state.settings.reliefStyle] * state.settings.mountainScale;
+    const maps = {
+      worldStructureMap: new Float32Array(size * size),
+      landMask: new Float32Array(size * size),
+      tectonicMap: new Float32Array(size * size),
+      terrainDirectionMap: new Float32Array(size * size),
+      flowDirectionMap: new Float32Array(size * size),
+      basinMap: new Float32Array(size * size),
+      mountainMap: new Float32Array(size * size),
+      erosionMap: new Float32Array(size * size),
+      riverFlowMap: new Float32Array(size * size),
+      coastDistanceMap: new Float32Array(size * size),
+      moistureMap: new Float32Array(size * size),
+      temperatureMap: new Float32Array(size * size),
+      biomeInfluenceMap: new Float32Array(size * size),
+      slopeMap: new Float32Array(size * size),
+      cliffMap: new Float32Array(size * size),
+      coastalErosionMap: new Float32Array(size * size)
+    };
 
-    for (let y = 0; y < size; y++) {
-      const ny = y / size;
-      for (let x = 0; x < size; x++) {
-        const nx = x / size;
-        const i = idx(x, y, size);
-        const n = fbm(nx * 4.8, ny * 4.8, seedBase, octaves);
-        const m = fbm(nx * 1.8, ny * 1.8, seedBase + 719, 3);
-        const radial = Math.max(Math.abs(nx - 0.5), Math.abs(ny - 0.5));
-        const coastMask = smoothstep(0.5 - border, 0.5, radial);
-        let v = n * 0.72 + m * 0.28;
-        v = (v - (1 - landCoverage)) * 1.25;
-        v = v * (1 - coastMask) - coastMask * 0.25;
-        height[i] = clamp(0.5 + v * relief, 0, 1);
-      }
-    }
+    setStep('Macro structure: plaques / bassins / dorsales...', 0.16);
+    const tectonicRegions = generateMacroStructure(maps, size, seedBase, quality, relief);
 
-    setStep('Montagnes...', 0.36);
-    addMountains(height, size, seedBase, relief);
+    setStep('Relief dirigé & distribution altimétrique...', 0.3);
+    buildBaseHeight(height, maps, size, seedBase, quality, relief);
+    applyHeightDistributionCurve(height);
 
-    setStep('Rivières...', 0.5);
-    generateRivers(height, riverMask, size, seedBase, rand);
+    setStep('Drainage / bassins versants / rivières...', 0.48);
+    generateDrainageNetwork(height, maps, riverMask, flowTo, size, quality, seedBase);
 
-    setStep('Érosion...', 0.66);
-    erodeHeightmap(height, size);
+    setStep('Érosion hydraulique + thermique...', 0.68);
+    applyAdvancedErosion(height, maps, flowTo, size, quality);
 
-    setStep('Biomes...', 0.8);
-    const biomeStats = paintBiomes(height, riverMask, biomeMap, size, seedBase);
+    setStep('Côtes naturelles & micro-relief...', 0.78);
+    computeCoastDistanceMap(height, maps, size);
+    applyCoastalErosion(height, maps, size, seedBase);
+    addMicroRelief(height, maps, size, seedBase, quality);
 
-    setStep('Nettoyage...', 0.9);
-    cleanupTerrain(height, size);
+    setStep('Climat + biomes cohérents...', 0.88);
+    computeClimateMaps(height, maps, size, seedBase);
+    computeSlopeAndCliffs(height, maps, size);
+    const biomeStats = paintBiomes(height, riverMask, biomeMap, maps, size, seedBase);
+
+    setStep('Nettoyage jouabilité...', 0.95);
+    cleanupTerrain(height, maps, size);
 
     state.terrain = {
       size,
@@ -246,6 +260,8 @@ function generateTerrain() {
       riverMask,
       biomeMap,
       biomeStats,
+      maps,
+      tectonicRegions,
       minHeight: state.settings.minY,
       maxHeight: state.settings.maxY
     };
@@ -258,104 +274,408 @@ function generateTerrain() {
   }, 'terrain generation');
 }
 
-function addMountains(height, size, seed, relief) {
+function generateMacroStructure(maps, size, seed, quality, relief) {
+  const rand = mulberry32(seed ^ 0x9e3779b9);
+  const regionCount = Math.max(6, Math.floor(8 + quality.erosionIters * 2 + (size >= 2048 ? 3 : 0)));
+  const tectonicRegions = [];
+  const types = ['collision', 'separation', 'compression', 'fracture'];
+
+  for (let i = 0; i < regionCount; i++) {
+    tectonicRegions.push({
+      x: rand(),
+      y: rand(),
+      strength: 0.4 + rand() * 0.85,
+      radius: 0.18 + rand() * 0.34,
+      type: types[Math.floor(rand() * types.length)],
+      angle: rand() * Math.PI * 2,
+      age: rand()
+    });
+  }
+
+  const targetLand = LAND_COVERAGE[state.settings.landCoverage] || 0.45;
+  const oceanBorder = OCEAN_BORDER[state.settings.oceanBorder] || 0.12;
+
+  for (let y = 0; y < size; y++) {
+    const ny = y / size;
+    for (let x = 0; x < size; x++) {
+      const nx = x / size;
+      const i = idx(x, y, size);
+
+      const continentNoise = fbm(nx * 1.2, ny * 1.2, seed + 11, 4);
+      const continentWarp = fbm(nx * 2.6, ny * 2.6, seed + 77, 3);
+      const radial = Math.max(Math.abs(nx - 0.5), Math.abs(ny - 0.5));
+      const edgeFalloff = smoothstep(0.5 - oceanBorder, 0.54, radial);
+      const land = clamp((continentNoise * 0.68 + continentWarp * 0.32 - (1 - targetLand)) * 2.3 + 0.5 - edgeFalloff * 0.95, 0, 1);
+      maps.landMask[i] = land;
+
+      let tectonic = 0;
+      let mountain = 0;
+      let basin = 0;
+      let dirX = 0;
+      let dirY = 0;
+
+      for (const region of tectonicRegions) {
+        const dx = nx - region.x;
+        const dy = ny - region.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const influence = Math.max(0, 1 - dist / region.radius);
+        if (!influence) continue;
+
+        let local = 0;
+        if (region.type === 'collision') {
+          local = influence * region.strength;
+          mountain += Math.pow(influence, 1.6) * region.strength;
+        } else if (region.type === 'separation') {
+          local = -influence * region.strength * 0.8;
+          basin += Math.pow(influence, 1.2) * region.strength;
+        } else if (region.type === 'compression') {
+          local = influence * region.strength * 0.55;
+          mountain += Math.pow(influence, 1.1) * region.strength * 0.45;
+          basin += Math.pow(1 - influence, 2) * 0.2;
+        } else {
+          const fault = Math.sin((dx * Math.cos(region.angle) + dy * Math.sin(region.angle)) * 38);
+          local = fault * influence * region.strength * 0.35;
+          basin += Math.abs(fault) * influence * 0.25;
+        }
+
+        tectonic += local;
+        dirX += Math.cos(region.angle) * local;
+        dirY += Math.sin(region.angle) * local;
+      }
+
+      const structureNoise = fbm(nx * 3.2, ny * 3.2, seed + 991, 3);
+      const structure = clamp(0.45 + tectonic * 0.45 + (structureNoise - 0.5) * 0.26, 0, 1);
+
+      maps.tectonicMap[i] = clamp(tectonic * 0.5 + 0.5, 0, 1);
+      maps.mountainMap[i] = clamp(mountain * relief * 0.7, 0, 1);
+      maps.basinMap[i] = clamp(basin * 0.78 + (1 - maps.landMask[i]) * 0.15, 0, 1);
+      maps.worldStructureMap[i] = structure;
+      maps.terrainDirectionMap[i] = Math.atan2(dirY || 0.001, dirX || 0.001);
+    }
+  }
+  return tectonicRegions;
+}
+
+function buildBaseHeight(height, maps, size, seed, quality, relief) {
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = idx(x, y, size);
+      const nx = x / size;
+      const ny = y / size;
+
+      const dir = maps.terrainDirectionMap[i];
+      const ax = Math.cos(dir), ay = Math.sin(dir);
+      const anisotropic = fbm((nx + ax * 0.05) * 6.8, (ny + ay * 0.05) * 3.2, seed + 411, quality.octaves);
+      const base = fbm(nx * 2.2, ny * 2.2, seed + 17, 4);
+
+      const mountains = maps.mountainMap[i] * 0.52;
+      const basins = maps.basinMap[i] * 0.42;
+      const tectonic = (maps.tectonicMap[i] - 0.5) * 0.36;
+      const structure = (maps.worldStructureMap[i] - 0.5) * 0.48;
+      const coastControl = maps.landMask[i];
+
+      let h = 0.38 + base * 0.32 + anisotropic * 0.22 + mountains + tectonic + structure - basins;
+      h = lerp(h * 0.45, h, coastControl);
+      h *= relief;
+      h = lerp(h, 0.36, clamp(1 - coastControl, 0, 1));
+      height[i] = clamp(h, 0, 1);
+    }
+  }
+}
+
+function applyHeightDistributionCurve(height) {
+  for (let i = 0; i < height.length; i++) {
+    const h = height[i];
+    const plains = Math.pow(h, 1.55);
+    const peaks = Math.pow(h, 3.2);
+    const curve = lerp(plains, peaks, smoothstep(0.68, 1, h));
+    height[i] = clamp(curve, 0, 1);
+  }
+}
+
+function generateDrainageNetwork(height, maps, riverMask, flowTo, size, quality, seed) {
+  const total = size * size;
+  const order = Array.from({ length: total }, (_, i) => i);
+  order.sort((a, b) => height[b] - height[a]);
+
+  const accum = maps.riverFlowMap;
+  for (let i = 0; i < total; i++) accum[i] = 1;
+
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = idx(x, y, size);
+      let best = i;
+      let bestH = height[i];
+      let bestDir = maps.terrainDirectionMap[i];
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          if (!ox && !oy) continue;
+          const ni = idx(x + ox, y + oy, size);
+          const directionalBias = Math.cos(Math.atan2(oy, ox) - maps.terrainDirectionMap[i]) * -0.003;
+          const h = height[ni] + directionalBias;
+          if (h < bestH) {
+            bestH = h;
+            best = ni;
+            bestDir = Math.atan2(oy, ox);
+          }
+        }
+      }
+      flowTo[i] = best === i ? -1 : best;
+      maps.flowDirectionMap[i] = bestDir;
+    }
+  }
+
+  for (const i of order) {
+    const downstream = flowTo[i];
+    if (downstream >= 0) accum[downstream] += accum[i];
+  }
+
+  const density = RIVERS[state.settings.riversLevel] ?? 2;
+  if (!density) return;
+
+  const normFactor = 1 / Math.max(1, total / 7200);
+  const thresholdBase = clamp(220 / density, 34, 280) / quality.riverPasses;
+
+  for (let p = 0; p < quality.riverPasses; p++) {
+    const threshold = thresholdBase * (1 + p * 0.28);
+    for (let i = 0; i < total; i++) {
+      const flow = accum[i] * normFactor;
+      if (flow < threshold || height[i] < 0.5) continue;
+
+      riverMask[i] = 1;
+      maps.riverFlowMap[i] = clamp(flow / (threshold * 2.2), 0, 1);
+
+      const erosionDepth = (0.0018 + state.settings.riverDepth * 0.0052) * (1 + maps.riverFlowMap[i]);
+      height[i] = clamp(height[i] - erosionDepth, 0, 1);
+
+      const x = i % size;
+      const y = (i / size) | 0;
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          const nx = x + ox;
+          const ny = y + oy;
+          if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+          const ni = idx(nx, ny, size);
+          const valley = 0.0025 * (1 - (Math.abs(ox) + Math.abs(oy)) * 0.3);
+          height[ni] = clamp(height[ni] - valley * (0.4 + maps.riverFlowMap[i]), 0, 1);
+        }
+      }
+    }
+  }
+}
+
+function applyAdvancedErosion(height, maps, flowTo, size, quality) {
+  const total = size * size;
+  const scratch = new Float32Array(total);
+  const sediment = new Float32Array(total);
+  const cleanup = clamp(state.settings.cleanupStrength, 0, 1);
+
+  for (let it = 0; it < quality.hydraulicIters; it++) {
+    scratch.set(height);
+    for (let y = 1; y < size - 1; y++) {
+      for (let x = 1; x < size - 1; x++) {
+        const i = idx(x, y, size);
+        const d = flowTo[i];
+        if (d < 0) continue;
+        const dh = height[i] - height[d];
+        if (dh <= 0) continue;
+
+        const flow = maps.riverFlowMap[i] + maps.basinMap[i] * 0.2;
+        const erode = clamp(dh * (0.017 + flow * 0.022) * (0.6 + cleanup * 0.8), 0, 0.012);
+        scratch[i] = clamp(scratch[i] - erode, 0, 1);
+        sediment[d] += erode * 0.76;
+        maps.erosionMap[i] = clamp(maps.erosionMap[i] + erode * 18, 0, 1);
+      }
+    }
+
+    for (let i = 0; i < total; i++) {
+      const deposit = sediment[i] * (0.45 + maps.basinMap[i] * 0.45);
+      height[i] = clamp(scratch[i] + deposit, 0, 1);
+      sediment[i] *= 0.24;
+    }
+  }
+
+  for (let it = 0; it < quality.thermalIters; it++) {
+    scratch.set(height);
+    for (let y = 1; y < size - 1; y++) {
+      for (let x = 1; x < size - 1; x++) {
+        const i = idx(x, y, size);
+        let maxDrop = 0;
+        let target = i;
+
+        const h = height[i];
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            if (!ox && !oy) continue;
+            const ni = idx(x + ox, y + oy, size);
+            const drop = h - height[ni];
+            if (drop > maxDrop) {
+              maxDrop = drop;
+              target = ni;
+            }
+          }
+        }
+
+        const talus = 0.028 + maps.cliffMap[i] * 0.03;
+        if (maxDrop > talus && target !== i) {
+          const move = (maxDrop - talus) * 0.26;
+          scratch[i] -= move;
+          scratch[target] += move;
+          maps.erosionMap[i] = clamp(maps.erosionMap[i] + move * 14, 0, 1);
+        }
+      }
+    }
+    for (let i = 0; i < total; i++) {
+      height[i] = clamp(scratch[i], 0, 1);
+    }
+  }
+
+  for (let i = 0; i < total; i++) {
+    const preserveCliff = smoothstep(0.62, 0.95, maps.mountainMap[i]);
+    height[i] = lerp(height[i], clamp(height[i] + preserveCliff * 0.015, 0, 1), preserveCliff * 0.35);
+  }
+}
+
+function computeCoastDistanceMap(height, maps, size) {
+  const dist = maps.coastDistanceMap;
+  const max = size * size;
+  const coastThreshold = 0.5;
+
+  for (let i = 0; i < dist.length; i++) dist[i] = max;
+
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = idx(x, y, size);
+      const water = height[i] < coastThreshold;
+      const n = height[idx(x + 1, y, size)] < coastThreshold;
+      const s = height[idx(x - 1, y, size)] < coastThreshold;
+      const e = height[idx(x, y + 1, size)] < coastThreshold;
+      const w = height[idx(x, y - 1, size)] < coastThreshold;
+      if ((water && (!n || !s || !e || !w)) || (!water && (n || s || e || w))) dist[i] = 0;
+    }
+  }
+
+  for (let y = 1; y < size; y++) {
+    for (let x = 1; x < size; x++) {
+      const i = idx(x, y, size);
+      dist[i] = Math.min(dist[i], dist[idx(x - 1, y, size)] + 1, dist[idx(x, y - 1, size)] + 1);
+    }
+  }
+  for (let y = size - 2; y >= 0; y--) {
+    for (let x = size - 2; x >= 0; x--) {
+      const i = idx(x, y, size);
+      dist[i] = Math.min(dist[i], dist[idx(x + 1, y, size)] + 1, dist[idx(x, y + 1, size)] + 1);
+    }
+  }
+
+  const norm = Math.max(size * 0.24, 1);
+  for (let i = 0; i < dist.length; i++) dist[i] = clamp(dist[i] / norm, 0, 1);
+}
+
+function applyCoastalErosion(height, maps, size, seed) {
+  const styleMap = { soft: 0.35, mixed: 0.6, rocky: 0.9, cliff: 1.2 };
+  const style = styleMap[state.settings.coastStyle] ?? 0.6;
+
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = idx(x, y, size);
+      const coast = 1 - maps.coastDistanceMap[i];
+      if (coast < 0.08) continue;
+
+      const noise = fbm((x / size) * 12, (y / size) * 12, seed + 730, 3);
+      const rugged = Math.abs(noise - 0.5) * 2;
+      const cliffFactor = smoothstep(0.65, 1, rugged) * style;
+
+      maps.coastalErosionMap[i] = clamp(coast * cliffFactor, 0, 1);
+      const coastDrop = coast * 0.028 * (0.35 + cliffFactor);
+      height[i] = clamp(height[i] - coastDrop * (height[i] > 0.5 ? 1 : 0.42), 0, 1);
+
+      if (height[i] > 0.51 && cliffFactor > 0.75) {
+        maps.cliffMap[i] = clamp(maps.cliffMap[i] + cliffFactor * 0.4, 0, 1);
+      }
+    }
+  }
+}
+
+function addMicroRelief(height, maps, size, seed, quality) {
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = idx(x, y, size);
       if (height[i] < 0.5) continue;
-      const r = Math.abs(fbm((x / size) * 8, (y / size) * 8, seed + 4444, 4) * 2 - 1);
-      const m = Math.pow(r, 2.2) * 0.18 * relief;
-      height[i] = clamp(height[i] + m, 0, 1);
+
+      const biomeProxy = clamp((maps.basinMap[i] * 0.5 + maps.mountainMap[i] * 0.9), 0, 1);
+      const ridgeNoise = fbm((x / size) * 19.5, (y / size) * 19.5, seed + 551, 2);
+      const rippleNoise = fbm((x / size) * 32, (y / size) * 32, seed + 552, 2);
+      const ravine = Math.pow(Math.abs(ridgeNoise - 0.5) * 2, 2.6);
+
+      let delta = (ridgeNoise - 0.5) * 0.018 + (rippleNoise - 0.5) * 0.011;
+      delta += (ravine - 0.4) * 0.014 * maps.mountainMap[i];
+      delta *= quality.microRelief * (0.35 + biomeProxy * 0.9);
+
+      height[i] = clamp(height[i] + delta, 0, 1);
     }
   }
 }
 
-function generateRivers(height, riverMask, size, seed, rand) {
-  const density = RIVERS[state.settings.riversLevel] ?? 2;
-  if (!density) return;
-  const starts = Math.max(1, Math.floor((size / 256) * density));
-
-  for (let r = 0; r < starts; r++) {
-    let x = Math.floor(rand() * size);
-    let y = Math.floor(rand() * size);
-    for (let tries = 0; tries < 120; tries++) {
-      if (height[idx(x, y, size)] > 0.68) break;
-      x = Math.floor(rand() * size);
-      y = Math.floor(rand() * size);
-    }
-
-    for (let step = 0; step < size * 1.5; step++) {
+function computeClimateMaps(height, maps, size, seed) {
+  for (let y = 0; y < size; y++) {
+    const latitude = Math.abs((y / (size - 1)) * 2 - 1);
+    for (let x = 0; x < size; x++) {
       const i = idx(x, y, size);
-      if (height[i] < 0.48) break;
-      riverMask[i] = 1;
-      height[i] = clamp(height[i] - (0.003 + state.settings.riverDepth * 0.01), 0, 1);
+      const nx = x / size;
+      const ny = y / size;
+      const altitude = height[i];
 
-      let bestX = x, bestY = y, bestH = height[i];
-      for (let oy = -1; oy <= 1; oy++) {
-        for (let ox = -1; ox <= 1; ox++) {
-          if (ox === 0 && oy === 0) continue;
-          const nx = x + ox, ny = y + oy;
-          if (nx < 1 || ny < 1 || nx >= size - 1 || ny >= size - 1) continue;
-          const ni = idx(nx, ny, size);
-          const directionalBias = valueNoise2D(nx * 0.03, ny * 0.03, seed + 911) * 0.005;
-          const h = height[ni] + directionalBias;
-          if (h < bestH) {
-            bestH = h;
-            bestX = nx;
-            bestY = ny;
-          }
-        }
-      }
-      if (bestX === x && bestY === y) break;
-      x = bestX;
-      y = bestY;
+      const maritime = 1 - maps.coastDistanceMap[i];
+      const rainShadow = clamp(maps.mountainMap[i] * (1 - maritime), 0, 1);
+      const moistureNoise = fbm(nx * 3.2, ny * 3.2, seed + 2718, 4);
+      const temperatureNoise = fbm(nx * 2.1, ny * 2.1, seed + 313, 3);
+
+      const moisture = clamp(0.32 + moistureNoise * 0.42 + maritime * 0.28 + maps.basinMap[i] * 0.25 - rainShadow * 0.3, 0, 1);
+      const temperature = clamp(0.88 - latitude * 0.72 - altitude * 0.38 + temperatureNoise * 0.21, 0, 1);
+
+      maps.moistureMap[i] = moisture;
+      maps.temperatureMap[i] = temperature;
+      maps.biomeInfluenceMap[i] = clamp((moisture * 0.55 + (1 - temperature) * 0.25 + maps.basinMap[i] * 0.2), 0, 1);
     }
   }
 }
 
-function erodeHeightmap(height, size) {
-  const iters = QUALITY[state.settings.qualityMode]?.erosionIters ?? 2;
-  const alpha = clamp(state.settings.cleanupStrength * 0.25, 0.05, 0.25);
-  const scratch = new Float32Array(height.length);
-
-  for (let it = 0; it < iters; it++) {
-    for (let y = 1; y < size - 1; y++) {
-      for (let x = 1; x < size - 1; x++) {
-        const i = idx(x, y, size);
-        const avg = (
-          height[i] +
-          height[idx(x - 1, y, size)] + height[idx(x + 1, y, size)] +
-          height[idx(x, y - 1, size)] + height[idx(x, y + 1, size)]
-        ) / 5;
-        scratch[i] = lerp(height[i], avg, alpha);
-      }
-    }
-    for (let y = 1; y < size - 1; y++) {
-      for (let x = 1; x < size - 1; x++) {
-        height[idx(x, y, size)] = scratch[idx(x, y, size)] || height[idx(x, y, size)];
-      }
+function computeSlopeAndCliffs(height, maps, size) {
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = idx(x, y, size);
+      const dx = (height[idx(x + 1, y, size)] - height[idx(x - 1, y, size)]) * 0.5;
+      const dy = (height[idx(x, y + 1, size)] - height[idx(x, y - 1, size)]) * 0.5;
+      const slope = Math.sqrt(dx * dx + dy * dy);
+      maps.slopeMap[i] = slope;
+      maps.cliffMap[i] = Math.max(maps.cliffMap[i], smoothstep(0.08, 0.2, slope));
     }
   }
 }
 
-function paintBiomes(height, riverMask, biomeMap, size, seed) {
+function paintBiomes(height, riverMask, biomeMap, maps, size, seed) {
   const labels = Object.keys(BIOME_COLORS);
   const counts = Object.fromEntries(labels.map((b) => [b, 0]));
   const weights = getBiomeWeights();
+  const transitionWidth = clamp(state.settings.biomeTransitionWidth, 0.05, 0.7);
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = idx(x, y, size);
-      const moisture = fbm((x / size) * 3.1, (y / size) * 3.1, seed + 2718, 4);
-      const tempBase = 1 - Math.abs((y / size) * 2 - 1);
-      const temperature = clamp(tempBase * 0.65 + fbm((x / size) * 2.5, (y / size) * 2.5, seed + 313, 3) * 0.35, 0, 1);
+      const moisture = maps.moistureMap[i];
+      const temperature = maps.temperatureMap[i];
+      const slope = maps.slopeMap[i];
+      const basin = maps.basinMap[i];
 
-      let biome = classifyBiome(height[i], moisture, temperature, riverMask[i] === 1);
-      if (weights[biome] < 0.8 && valueNoise2D(x * 0.02, y * 0.02, seed + 57) > weights[biome]) {
-        biome = 'plains';
-      }
+      const transitionNoise = (valueNoise2D(x * 0.05, y * 0.05, seed + 57) - 0.5) * transitionWidth;
+      let biome = classifyBiome(clamp(height[i] + transitionNoise, 0, 1), moisture, temperature, slope, basin, riverMask[i] === 1);
+
+      const reject = weights[biome] < 1 && valueNoise2D(x * 0.027, y * 0.027, seed + 93) > weights[biome];
+      if (reject) biome = maps.biomeInfluenceMap[i] > 0.5 ? 'forest' : 'plains';
+
       const bIndex = labels.indexOf(biome);
-      biomeMap[i] = bIndex;
+      biomeMap[i] = bIndex < 0 ? labels.indexOf('plains') : bIndex;
       counts[biome] += 1;
     }
   }
@@ -365,16 +685,21 @@ function paintBiomes(height, riverMask, biomeMap, size, seed) {
 /* ==============================
    8. CLEANUP
 ================================ */
-function cleanupTerrain(height, size) {
-  const edgeStrength = OCEAN_BORDER[state.settings.oceanBorder] * 1.3;
+function cleanupTerrain(height, maps, size) {
+  const edgeStrength = OCEAN_BORDER[state.settings.oceanBorder] * (1.1 + state.settings.cleanupStrength * 0.7);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const i = idx(x, y, size);
       const nx = x / size;
       const ny = y / size;
       const d = Math.max(Math.abs(nx - 0.5), Math.abs(ny - 0.5));
-      const edge = smoothstep(0.45, 0.5, d);
+      const edge = smoothstep(0.43, 0.56, d);
+      const playablePlain = smoothstep(0.42, 0.7, maps.worldStructureMap[i]) * (1 - maps.mountainMap[i]);
+
       height[i] = clamp(height[i] - edge * edgeStrength, 0, 1);
+      if (height[i] > 0.53 && playablePlain > 0.64 && maps.slopeMap[i] < 0.06) {
+        height[i] = lerp(height[i], 0.62, 0.08);
+      }
     }
   }
 }
@@ -398,6 +723,7 @@ function renderPreview(forceMode) {
 
   for (let i = 0; i < terrain.height.length; i++) {
     const h = terrain.height[i];
+    const maps = terrain.maps;
     let r = 0, g = 0, b = 0;
 
     if (mode === 'biome-map') {
@@ -417,14 +743,40 @@ function renderPreview(forceMode) {
     } else if (mode === 'rivers-preview') {
       if (terrain.riverMask[i]) [r, g, b] = [42, 126, 220];
       else r = g = b = Math.round(h * 255);
+    } else if (mode === 'slope-preview') {
+      const s = clamp((maps.slopeMap[i] || 0) * 5.2, 0, 1);
+      r = Math.round(s * 255);
+      g = Math.round((1 - Math.abs(s - 0.45)) * 220);
+      b = Math.round((1 - s) * 180);
+    } else if (mode === 'erosion-preview') {
+      const e = maps.erosionMap[i] || 0;
+      r = Math.round(e * 255);
+      g = Math.round(clamp(h * 0.8, 0, 1) * 180);
+      b = Math.round((1 - e) * 180);
+    } else if (mode === 'tectonic-preview') {
+      const t = maps.tectonicMap[i] || 0;
+      r = Math.round(t * 255);
+      g = Math.round((1 - Math.abs(t - 0.5) * 2) * 220);
+      b = Math.round((1 - t) * 255);
+    } else if (mode === 'coast-distance-preview') {
+      const c = maps.coastDistanceMap[i] || 0;
+      r = Math.round((1 - c) * 30);
+      g = Math.round((1 - c) * 190 + c * 80);
+      b = Math.round(c * 255);
+    } else if (mode === 'contour-preview') {
+      const contour = Math.abs(((h * 32) % 1) - 0.5) < 0.04 ? 1 : 0;
+      const v = Math.round(h * 190);
+      r = v + contour * 65;
+      g = v + contour * 45;
+      b = v + contour * 18;
     } else {
       r = g = b = Math.round(h * 255);
     }
 
     const p = i * 4;
-    image.data[p] = r;
-    image.data[p + 1] = g;
-    image.data[p + 2] = b;
+    image.data[p] = clamp(Math.round(r), 0, 255);
+    image.data[p + 1] = clamp(Math.round(g), 0, 255);
+    image.data[p + 2] = clamp(Math.round(b), 0, 255);
     image.data[p + 3] = 255;
   }
 
@@ -680,6 +1032,7 @@ function renderStats() {
     'Altitude min (norm.)': stats.min.toFixed(3),
     'Altitude max (norm.)': stats.max.toFixed(3),
     'Altitude moyenne': stats.avg.toFixed(3),
+    'Rivières (pixels)': state.terrain.riverMask.reduce((acc, v) => acc + v, 0),
     'Min Y export': state.settings.minY,
     'Max Y export': state.settings.maxY
   };
@@ -701,7 +1054,8 @@ function renderStats() {
   const wpChecks = [
     ['Plage Y valide', state.settings.minY < state.settings.maxY],
     ['Amplitude raisonnable', state.settings.maxY - state.settings.minY <= 320],
-    ['Niveau mer plausible', stats.avg > 0.35 && stats.avg < 0.7]
+    ['Niveau mer plausible', stats.avg > 0.35 && stats.avg < 0.7],
+    ['Plaines jouables', (state.terrain.biomeStats.plains || 0) / total > 0.15]
   ];
   wpChecks.forEach(([k, ok]) => {
     const li = document.createElement('li');
