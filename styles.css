@@ -73,6 +73,12 @@ button { cursor: pointer; font-weight: 650; border: none; }
   align-items: end;
 }
 
+.manual-message {
+  margin: .5rem 0 0;
+  font-size: .78rem;
+  color: var(--muted);
+}
+
 .actions-under-main {
   display: grid;
   gap: .42rem;

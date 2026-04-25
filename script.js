@@ -24,6 +24,7 @@ const ui = {
   randomSeed: $('random-seed'),
   newSeed: $('new-seed'),
   generate: $('generate'),
+  quickPreview: $('quick-preview'),
   quickPreviewBadge: $('quick-preview-badge'),
   impactNote: $('impact-note'),
 
@@ -121,7 +122,6 @@ const ctx = ui.canvas.getContext('2d', { willReadFrequently: true });
 const histCtx = ui.histogram.getContext('2d');
 const worker = new Worker('terrain-worker.js');
 let pendingJob = null;
-let previewDebounce = null;
 
 const state = { preview: null, full: null, config: null };
 
@@ -130,6 +130,11 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 function setProgress(step, pct) {
   ui.pipelineStep.textContent = step;
   ui.progress.style.width = `${Math.round(pct * 100)}%`;
+}
+
+function setManualGuidance(message = 'Modifiez vos paramètres puis cliquez sur Générer') {
+  ui.pipelineStep.textContent = message;
+  ui.progress.style.width = '0%';
 }
 
 function minecraftYToGray(y, bitDepth = 8) {
@@ -207,7 +212,7 @@ function bindAdvancedValue(id, forcedText = null) {
   badge.textContent = forcedText || input.value;
 }
 
-function collectConfig(scale = 1) {
+function collectSettings(scale = 1) {
   const targetSize = Number(ui.mapSize.value);
   const dim = Math.max(256, Math.floor(targetSize * scale));
   const derived = deriveConfigFromSimple();
@@ -264,7 +269,7 @@ function previewScaleFor(size) {
 }
 
 function launchGeneration(phase, scale = 1) {
-  const cfg = collectConfig(scale);
+  const cfg = collectSettings(scale);
   state.config = cfg;
   pendingJob = phase;
   worker.postMessage({ type: 'generate', phase, cfg });
@@ -299,6 +304,13 @@ worker.onmessage = (event) => {
       setProgress(`Preview rapide prête (${payload.width}x${payload.height})`, 1);
     } else {
       state.full = payload;
+      state.preview = payload;
+      ui.canvas.width = payload.width;
+      ui.canvas.height = payload.height;
+      renderPreview();
+      renderStats(payload);
+      renderHistogram(payload);
+      renderSummary(payload.config);
       setProgress(`Génération finale prête (${payload.width}x${payload.height})`, 1);
     }
     pendingJob = null;
@@ -451,7 +463,7 @@ function downloadBlob(name, blob) {
 
 function awaitFullResolution() {
   return new Promise((resolve) => {
-    const cfg = collectConfig(1);
+    const cfg = collectSettings(1);
     if (state.full && state.full.width === cfg.targetWidth && state.full.config.seed === cfg.seed && state.full.config.quality === cfg.quality) {
       resolve(state.full);
       return;
@@ -525,50 +537,53 @@ async function exportPresetJson() {
   downloadBlob('heightmap_export.json', new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
 }
 
-function triggerAutoPreview() {
-  clearTimeout(previewDebounce);
-  setProgress('Preview rapide…', 0.05);
-  previewDebounce = setTimeout(() => {
-    state.full = null;
-    const scale = previewScaleFor(Number(ui.mapSize.value));
-    launchGeneration('preview', scale);
-  }, 220);
-}
-
 function bindSimpleInteractions() {
   ['mapSize', 'worldType', 'reliefStyle', 'waterAmount', 'coastStyle', 'riversLevel', 'qualityMode'].forEach((key) => {
     ui[key].addEventListener('change', () => {
       const derived = deriveConfigFromSimple();
       syncAdvancedInputs(derived);
       updateImpactNote();
-      triggerAutoPreview();
+      state.full = null;
+      setManualGuidance();
     });
   });
 
-  ui.seed.addEventListener('change', triggerAutoPreview);
+  ui.seed.addEventListener('change', () => {
+    state.full = null;
+    setManualGuidance();
+  });
+
   ui.generate.addEventListener('click', () => {
     state.full = null;
     launchGeneration('full', 1);
   });
 
+  ui.quickPreview.addEventListener('click', () => {
+    state.full = null;
+    const scale = previewScaleFor(Number(ui.mapSize.value));
+    launchGeneration('preview', scale);
+  });
+
   ui.randomSeed.addEventListener('click', () => {
     randomSeed();
-    triggerAutoPreview();
+    state.full = null;
+    setManualGuidance();
   });
 
   ui.newSeed.addEventListener('click', () => {
     randomSeed();
-    triggerAutoPreview();
+    state.full = null;
+    setManualGuidance();
   });
 
   ['sea-level', 'min-y', 'max-y', 'erosion-strength', 'mountain-scale', 'river-depth', 'coastline-complexity', 'quantization', 'cleanup-strength'].forEach((id) => {
     const el = $(id);
     el.addEventListener('input', () => {
       bindAdvancedValue(id, id === 'sea-level' ? `Y${el.value}` : null);
-      triggerAutoPreview();
+      state.full = null;
+      setManualGuidance();
     });
   });
-
 }
 
 ui.previewMode.addEventListener('change', renderPreview);
@@ -602,4 +617,4 @@ const derived = deriveConfigFromSimple();
 syncAdvancedInputs(derived);
 bindSimpleInteractions();
 updateImpactNote();
-triggerAutoPreview();
+setManualGuidance();
