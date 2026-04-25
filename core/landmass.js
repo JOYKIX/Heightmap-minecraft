@@ -14,17 +14,22 @@ export function resolveOceanBorder(border) {
 
 export function generateLandPotential(config) {
   const { width, height, seed } = config;
+  const arr = new Float32Array(width * height);
+
+  // Structure-first: direction field + ridge corridors + basin lobes + coastal bite
+  const dirNoise = createValueNoise2D(`${seed}:world:direction`, 56);
   const warpXNoise = createValueNoise2D(`${seed}:land:warp:x`, 64);
   const warpYNoise = createValueNoise2D(`${seed}:land:warp:y`, 64);
-  const macroNoise = createValueNoise2D(`${seed}:land:macro`, 128);
-  const coastNoise = createValueNoise2D(`${seed}:land:coast`, 192);
-  const asymNoise = createValueNoise2D(`${seed}:land:asym`, 72);
+  const continentNoise = createValueNoise2D(`${seed}:land:continent`, 120);
+  const shelfNoise = createValueNoise2D(`${seed}:land:shelf`, 164);
+  const bayNoise = createValueNoise2D(`${seed}:land:bay`, 88);
+  const archipelagoNoise = createValueNoise2D(`${seed}:land:archipelago`, 42);
 
-  const arr = new Float32Array(width * height);
-  const cx = width * 0.5;
-  const cy = height * 0.5;
+  const cx = width * 0.49;
+  const cy = height * 0.53;
   const maxDist = Math.hypot(cx, cy);
-  const eps = 1e-6;
+
+  const mainDir = fbm2D(dirNoise, 0.27, 0.63, 2, 2.0, 0.5, 0.7) * Math.PI * 2;
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -32,30 +37,34 @@ export function generateLandPotential(config) {
       const nx = x / width;
       const ny = y / height;
 
-      const wx = (fbm2D(warpXNoise, nx, ny, 2, 2.0, 0.5, 1.4) - 0.5) * 0.2;
-      const wy = (fbm2D(warpYNoise, nx, ny, 2, 2.0, 0.5, 1.4) - 0.5) * 0.2;
+      const wx = (fbm2D(warpXNoise, nx, ny, 3, 2.0, 0.5, 1.3) - 0.5) * 0.24;
+      const wy = (fbm2D(warpYNoise, nx, ny, 3, 2.0, 0.5, 1.3) - 0.5) * 0.24;
       const sx = nx + wx;
       const sy = ny + wy;
 
-      const dx = x - cx + wx * width;
-      const dy = y - cy + wy * height;
-      const radial = Math.hypot(dx, dy) / (maxDist + eps);
-      const theta = Math.atan2(dy + eps, dx + eps);
+      const dx = (x - cx) / width;
+      const dy = (y - cy) / height;
+      const radial = Math.hypot(dx, dy) / Math.hypot(0.5, 0.5);
 
-      const macro = fbm2D(macroNoise, sx, sy, 5, 2.03, 0.53, 2.8);
-      const coastal = fbm2D(coastNoise, sx, sy, 4, 2.2, 0.58, 5.2);
-      const asym = fbm2D(asymNoise, sx + 0.27, sy - 0.19, 3, 2.0, 0.54, 1.6);
+      const axisDist = Math.abs(Math.sin((Math.atan2(dy, dx) - mainDir) * 1.2));
+      const structuralBackbone = Math.max(0, 1 - axisDist * 1.25) * Math.max(0, 1 - radial * 1.15);
 
-      const directional = Math.sin(theta * 1.7 + asym * 4.5) * 0.09 + Math.cos(theta * 0.8 - asym * 3.2) * 0.06;
-      const deformedRadial = radial * (1 + directional);
-      const basin = Math.max(0, deformedRadial - 0.42);
+      const continent = fbm2D(continentNoise, sx, sy, 5, 2.03, 0.52, 2.3);
+      const shelf = fbm2D(shelfNoise, sx * 1.1 + 0.13, sy * 0.9 - 0.19, 4, 2.1, 0.56, 4.8);
+      const bayCut = Math.max(0, fbm2D(bayNoise, sx * 0.85 - 0.27, sy * 1.15 + 0.1, 3, 2.0, 0.5, 1.4) - 0.56);
+      const archipelago = Math.max(0, fbm2D(archipelagoNoise, nx * 1.8 + 0.2, ny * 1.7 - 0.3, 2, 2.0, 0.54, 1.1) - 0.65);
+
+      const irregularFalloff = Math.pow(Math.max(0, radial - 0.35), 1.7) * (1.1 + shelf * 0.45 + bayCut * 0.8);
+      const peninsulaBoost = Math.max(0, structuralBackbone - radial * 0.2) * 0.42;
 
       arr[i] =
-        macro * 0.62 +
-        coastal * 0.26 +
-        asym * 0.12 -
-        basin * basin * 1.35 -
-        radial * 0.08;
+        continent * 0.54 +
+        shelf * 0.24 +
+        structuralBackbone * 0.21 +
+        peninsulaBoost +
+        archipelago * 0.28 -
+        irregularFalloff * 1.45 -
+        bayCut * (0.5 + radial * 0.6);
     }
   }
 
@@ -65,8 +74,8 @@ export function generateLandPotential(config) {
 export function applyOceanBorderMask(landPotential, config) {
   const { width, height } = config;
   const border = resolveOceanBorder(config.oceanBorder);
-  const borderX = Math.max(1, Math.floor(width * border));
-  const borderY = Math.max(1, Math.floor(height * border));
+  const borderX = Math.max(2, Math.floor(width * border));
+  const borderY = Math.max(2, Math.floor(height * border));
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -78,7 +87,7 @@ export function applyOceanBorderMask(landPotential, config) {
       const edgeFactor = Math.min(fx, fy);
       const pushToOcean = 1 - edgeFactor;
       if (pushToOcean <= 0) continue;
-      landPotential[i] -= 2.4 * pushToOcean * pushToOcean;
+      landPotential[i] -= (2.65 + pushToOcean * 0.9) * pushToOcean * pushToOcean;
     }
   }
 }
@@ -171,7 +180,7 @@ function removeMicroIslands(mask, width, height) {
 
   components.sort((a, b) => b.size - a.size);
   const keepMain = components[0].label;
-  const keepSecondary = components.filter((c, idx) => idx > 0 && c.size > width * height * 0.001).map((c) => c.label);
+  const keepSecondary = components.filter((c, idx) => idx > 0 && c.size > width * height * 0.0006).map((c) => c.label);
   const keep = new Set([keepMain, ...keepSecondary]);
 
   const out = new Uint8Array(mask.length);
@@ -206,36 +215,62 @@ export function validateNoLandTouchesEdges(mask, width, height) {
 
 export function generateGeographySkeleton(config, landMask, distanceToCoast) {
   const { width, height, seed } = config;
-  const mainRidgeLine = new Float32Array(width * height);
-  const mountainCore = new Float32Array(width * height);
-  const lowlandBasins = new Float32Array(width * height);
-  const coastalPlains = new Float32Array(width * height);
-  const riverBasins = new Float32Array(width * height);
-  const plateauZones = new Float32Array(width * height);
+  const total = width * height;
 
-  const ridgeNoise = createValueNoise2D(`${seed}:geo:ridge`, 96);
+  const worldStructureMap = new Float32Array(total);
+  const terrainDirectionField = new Float32Array(total);
+  const mainRidgeLine = new Float32Array(total);
+  const mountainCore = new Float32Array(total);
+  const lowlandBasins = new Float32Array(total);
+  const coastalPlains = new Float32Array(total);
+  const riverBasins = new Float32Array(total);
+  const plateauZones = new Float32Array(total);
+
+  const structureNoise = createValueNoise2D(`${seed}:geo:structure`, 92);
+  const dirNoise = createValueNoise2D(`${seed}:geo:direction`, 66);
+  const ridgeNoise = createValueNoise2D(`${seed}:geo:ridge`, 74);
   const basinNoise = createValueNoise2D(`${seed}:geo:basin`, 84);
-  const plateauNoise = createValueNoise2D(`${seed}:geo:plateau`, 76);
+  const plateauNoise = createValueNoise2D(`${seed}:geo:plateau`, 88);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       if (!landMask[i]) continue;
+
       const nx = x / width;
       const ny = y / height;
-      const inland = Math.min(1, distanceToCoast[i] / 46);
-      const ridge = Math.max(0, 1 - Math.abs(fbm2D(ridgeNoise, nx, ny, 4, 2.0, 0.52, 1.8) - 0.5) * 3.4);
-      const basin = fbm2D(basinNoise, nx, ny, 3, 2.0, 0.55, 1.2);
-      const plateau = Math.max(0, fbm2D(plateauNoise, nx * 0.9, ny * 1.1, 3, 2.0, 0.5, 1.5) - 0.52) * 2.1;
+      const inland = Math.min(1, distanceToCoast[i] / 54);
+      const dir = fbm2D(dirNoise, nx, ny, 3, 2.0, 0.52, 1.1) * Math.PI * 2;
+      terrainDirectionField[i] = dir;
 
-      mainRidgeLine[i] = ridge * inland;
-      mountainCore[i] = Math.max(0, ridge * inland * inland);
-      lowlandBasins[i] = Math.max(0, (1 - basin) * (1 - inland * 0.7));
-      coastalPlains[i] = Math.max(0, (1 - inland) * (0.75 + basin * 0.25));
-      riverBasins[i] = Math.max(0, lowlandBasins[i] * 0.6 + (1 - ridge) * 0.4);
-      plateauZones[i] = plateau * inland;
+      const structure = fbm2D(structureNoise, nx, ny, 4, 2.0, 0.52, 1.4);
+      const directionalRidge = Math.max(0, 1 - Math.abs(Math.sin((nx * Math.cos(dir) + ny * Math.sin(dir)) * Math.PI * 8 + dir)));
+      const ridge = Math.max(0, 1 - Math.abs(fbm2D(ridgeNoise, nx, ny, 4, 2.0, 0.52, 1.6) - 0.5) * 3.4);
+      const basin = fbm2D(basinNoise, nx * 1.05, ny * 0.95, 3, 2.0, 0.55, 1.2);
+      const plateau = Math.max(0, fbm2D(plateauNoise, nx * 0.9, ny * 1.1, 3, 2.0, 0.5, 1.35) - 0.56) * 2.3;
+
+      worldStructureMap[i] = clamp01(structure * 0.45 + ridge * 0.28 + directionalRidge * 0.27);
+      mainRidgeLine[i] = clamp01((ridge * 0.65 + directionalRidge * 0.35) * inland);
+      mountainCore[i] = clamp01(mainRidgeLine[i] * inland * (0.7 + worldStructureMap[i] * 0.5));
+      lowlandBasins[i] = clamp01((1 - basin) * (1 - inland * 0.75) * (0.7 + (1 - ridge) * 0.3));
+      coastalPlains[i] = clamp01((1 - inland) * (0.75 + basin * 0.25));
+      riverBasins[i] = clamp01(lowlandBasins[i] * 0.54 + (1 - mainRidgeLine[i]) * 0.32 + (1 - worldStructureMap[i]) * 0.14);
+      plateauZones[i] = clamp01(plateau * inland * (0.65 + worldStructureMap[i] * 0.25));
     }
   }
 
-  return { mainRidgeLine, mountainCore, lowlandBasins, coastalPlains, riverBasins, plateauZones };
+  return {
+    worldStructureMap,
+    terrainDirectionField,
+    mainRidgeLine,
+    mountainCore,
+    lowlandBasins,
+    coastalPlains,
+    riverBasins,
+    plateauZones
+  };
+}
+
+function clamp01(v) {
+  return Math.max(0, Math.min(1, v));
 }

@@ -14,11 +14,12 @@ export function generateClimateMaps(config, context) {
   const riverInfluenceMap = new Float32Array(width * height);
   const biomeRegionMap = new Float32Array(width * height);
 
-  const moistNoise = createValueNoise2D(`${seed}:climate:moisture`, 96);
+  const moistNoise = createValueNoise2D(`${seed}:climate:moisture`, 84);
   const tempNoise = createValueNoise2D(`${seed}:climate:temp`, 96);
-  const elevNoise = createValueNoise2D(`${seed}:climate:elev`, 84);
-  const mountainNoise = createValueNoise2D(`${seed}:climate:mountain`, 72);
-  const regionNoise = createValueNoise2D(`${seed}:biome:region`, 48);
+  const elevNoise = createValueNoise2D(`${seed}:climate:elev`, 80);
+  const mountainNoise = createValueNoise2D(`${seed}:climate:mountain`, 68);
+  const rainShadowNoise = createValueNoise2D(`${seed}:climate:rainshadow`, 74);
+  const regionNoise = createValueNoise2D(`${seed}:biome:region`, 42);
 
   for (let y = 0; y < height; y++) {
     const latitude = Math.abs((y / Math.max(1, height - 1)) * 2 - 1);
@@ -26,15 +27,17 @@ export function generateClimateMaps(config, context) {
       const i = y * width + x;
       const nx = x / width;
       const ny = y / height;
-      const coastInfluence = Math.min(1, distanceToCoast[i] / 28);
+      const coastInfluence = Math.min(1, distanceToCoast[i] / 32);
       const ridge = geography?.mainRidgeLine?.[i] ?? 0;
       const mountainCore = geography?.mountainCore?.[i] ?? 0;
-      const riverBasin = geography?.riverBasins?.[i] ?? 0;
+      const basin = geography?.riverBasins?.[i] ?? 0;
+      const structure = geography?.worldStructureMap?.[i] ?? 0;
 
-      const m = fbm2D(moistNoise, nx, ny, 4, 2.0, 0.5, 2.2);
+      const m = fbm2D(moistNoise, nx, ny, 4, 2.0, 0.5, 2.0);
       const t = fbm2D(tempNoise, nx, ny, 4, 2.0, 0.5, 2.2);
-      const e = fbm2D(elevNoise, nx, ny, 3, 2.0, 0.5, 1.6);
-      const mountainN = fbm2D(mountainNoise, nx, ny, 3, 2.0, 0.55, 1.9);
+      const e = fbm2D(elevNoise, nx, ny, 3, 2.0, 0.5, 1.5);
+      const mountainN = fbm2D(mountainNoise, nx, ny, 3, 2.0, 0.55, 1.8);
+      const shadow = fbm2D(rainShadowNoise, nx * 0.8 + 0.14, ny * 1.2 - 0.12, 3, 2.0, 0.54, 1.45);
       const regionN = fbm2D(regionNoise, nx, ny, 2, 2.0, 0.5, 1.1);
 
       if (!landMask[i]) {
@@ -47,11 +50,12 @@ export function generateClimateMaps(config, context) {
         continue;
       }
 
-      moistureMap[i] = clamp01(m * 0.62 + (1 - coastInfluence) * 0.2 + riverBasin * 0.22 + 0.04);
-      temperatureMap[i] = clamp01(t * 0.7 + (1 - latitude) * 0.22 - mountainCore * 0.15 - latitude * 0.15);
-      elevationIntentMap[i] = clamp01(e * 0.45 + ridge * 0.27 + mountainCore * 0.22 + coastInfluence * 0.12);
-      mountainPotentialMap[i] = clamp01(mountainN * 0.45 + ridge * 0.35 + mountainCore * 0.2);
-      riverInfluenceMap[i] = clamp01(riverBasin * 0.55 + (1 - coastInfluence) * 0.15 + (1 - mountainCore) * 0.2);
+      const rainShadow = mountainCore * 0.35 * (0.55 + (shadow - 0.5) * 0.45);
+      moistureMap[i] = clamp01(m * 0.58 + (1 - coastInfluence) * 0.18 + basin * 0.23 + (1 - ridge) * 0.07 - rainShadow + 0.06);
+      temperatureMap[i] = clamp01(t * 0.68 + (1 - latitude) * 0.2 - mountainCore * 0.2 - latitude * 0.12 + (1 - structure) * 0.06);
+      elevationIntentMap[i] = clamp01(e * 0.38 + ridge * 0.3 + mountainCore * 0.2 + coastInfluence * 0.1 + structure * 0.08);
+      mountainPotentialMap[i] = clamp01(mountainN * 0.35 + ridge * 0.35 + mountainCore * 0.2 + structure * 0.1);
+      riverInfluenceMap[i] = clamp01(basin * 0.52 + (1 - coastInfluence) * 0.18 + (1 - mountainCore) * 0.15 + moistureMap[i] * 0.15);
       biomeRegionMap[i] = regionN;
     }
   }
@@ -61,7 +65,18 @@ export function generateClimateMaps(config, context) {
 
 export function generateBiomeMap(config, context) {
   const { width, height, seed } = config;
-  const { landMask, distanceToCoast, moistureMap, temperatureMap, elevationIntentMap, mountainPotentialMap, riverInfluenceMap, biomeRegionMap } = context;
+  const {
+    landMask,
+    distanceToCoast,
+    moistureMap,
+    temperatureMap,
+    elevationIntentMap,
+    mountainPotentialMap,
+    riverInfluenceMap,
+    biomeRegionMap,
+    geography
+  } = context;
+
   const profiles = resolveBiomeProfiles(config);
   const biomeIds = ['ocean', 'coast', ...LAND_BIOMES.filter((id) => profiles[id]?.enabled !== false)];
   const biomeToIndex = Object.fromEntries(biomeIds.map((id, i) => [id, i]));
@@ -70,7 +85,7 @@ export function generateBiomeMap(config, context) {
   const biomeMap = new Uint8Array(width * height);
 
   const regionNoises = Object.fromEntries(
-    biomeIds.map((id) => [id, createValueNoise2D(`${seed}:biome:${id}`, Math.max(36, Math.round(96 * (1 - (profiles[id]?.regionSize ?? 0.5) * 0.7))))])
+    biomeIds.map((id) => [id, createValueNoise2D(`${seed}:biome:${id}`, Math.max(32, Math.round(90 * (1 - (profiles[id]?.regionSize ?? 0.5) * 0.72))))])
   );
 
   const targets = Object.fromEntries(biomeIds.map((id) => [id, (profiles[id]?.targetPercent ?? 0) / 100]));
@@ -83,7 +98,7 @@ export function generateBiomeMap(config, context) {
       continue;
     }
 
-    if (distanceToCoast[i] <= 3) {
+    if (distanceToCoast[i] <= 2) {
       weights[biomeToIndex.coast] = 1;
       biomeMap[i] = biomeToIndex.coast;
       continue;
@@ -93,23 +108,33 @@ export function generateBiomeMap(config, context) {
     const y = (i / width) | 0;
     const nx = x / width;
     const ny = y / height;
+    const structure = geography?.worldStructureMap?.[i] ?? 0;
+    const basin = geography?.riverBasins?.[i] ?? 0;
 
     for (let b = 0; b < biomeIds.length; b++) {
       const id = biomeIds[b];
       if (id === 'ocean' || id === 'coast') continue;
       const profile = profiles[id];
       if (!profile || profile.enabled === false) continue;
-      const region = fbm2D(regionNoises[id], nx, ny, 2, 2.0, 0.52, 1.3 + (1 - profile.regionSize) * 2);
-      const reliefScore = 1 - Math.abs(elevationIntentMap[i] - normalizedAltitude(profile.preferredY));
-      const score =
-        0.23 * (1 - Math.abs(moistureMap[i] - profile.moistureAffinity)) +
-        0.19 * (1 - Math.abs(temperatureMap[i] - profile.temperatureAffinity)) +
+
+      const region = fbm2D(regionNoises[id], nx, ny, 2, 2.0, 0.52, 1.2 + (1 - profile.regionSize) * 1.7);
+      const climateMatch =
+        0.25 * (1 - Math.abs(moistureMap[i] - profile.moistureAffinity)) +
+        0.2 * (1 - Math.abs(temperatureMap[i] - profile.temperatureAffinity)) +
         0.16 * (1 - Math.abs(riverInfluenceMap[i] - profile.riverAffinity)) +
         0.16 * (1 - Math.abs(mountainPotentialMap[i] - profile.mountainAffinity)) +
-        0.1 * (1 - Math.abs((1 - Math.min(1, distanceToCoast[i] / 30)) - profile.coastAffinity)) +
-        0.1 * reliefScore +
-        0.06 * biomeRegionMap[i] +
-        0.06 * region;
+        0.1 * (1 - Math.abs((1 - Math.min(1, distanceToCoast[i] / 34)) - profile.coastAffinity));
+
+      const reliefMatch = 1 - Math.abs(elevationIntentMap[i] - normalizedAltitude(profile.preferredY));
+      const geoBias = 1 - Math.abs(structure - profile.mountainAffinity * 0.75) * 0.6 + basin * profile.riverAffinity * 0.2;
+
+      const score =
+        climateMatch * 0.68 +
+        reliefMatch * 0.14 +
+        geoBias * 0.08 +
+        biomeRegionMap[i] * 0.05 +
+        region * 0.05;
+
       weights[b] = Math.max(0.0001, score);
     }
 
@@ -137,7 +162,7 @@ function applyTargetBias(weights, biomeIds, targets, profiles) {
     const target = targets[id];
     if (!target) continue;
     const soft = profiles[id]?.transitionSoftness ?? 0.5;
-    weights[i] *= 0.75 + target * (0.7 + soft * 0.6);
+    weights[i] *= 0.78 + target * (0.65 + soft * 0.7);
   }
   normalizeWeights(weights);
 }
@@ -148,7 +173,7 @@ function smoothBiomeRegions(biomeMap, width, height, coastIdx, oceanIdx) {
     for (let x = 1; x < width - 1; x++) {
       const i = y * width + x;
       if (src[i] === coastIdx || src[i] === oceanIdx) continue;
-      const counts = new Uint16Array(32);
+      const counts = new Uint16Array(48);
       for (let oy = -1; oy <= 1; oy++) {
         for (let ox = -1; ox <= 1; ox++) {
           const ni = (y + oy) * width + (x + ox);
