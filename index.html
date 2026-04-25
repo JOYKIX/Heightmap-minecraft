@@ -3,217 +3,176 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Minecraft Heightmap Builder</title>
+    <title>Heightmap Minecraft / WorldPainter</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,500,0,0" />
   </head>
   <body>
-    <div class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="material-symbols-rounded">landscape</span> Heightmap Generator</div>
+      <div id="status-text">Configurez vos paramètres puis cliquez sur Générer.</div>
+      <div class="topbar-meta" id="topbar-meta">Sea Level Y64</div>
+    </header>
+
+    <div class="layout">
       <aside class="panel left">
-        <h1>Heightmap Builder</h1>
-        <p class="subtitle">Mode simple orienté contrôle + réalisme + export WorldPainter safe.</p>
-
         <section class="card">
-          <h2>Mode Simple</h2>
-
-          <label>Taille de la map
-            <select id="map-size">
-              <option value="512">512 x 512</option>
-              <option value="1024" selected>1024 x 1024 (recommandé)</option>
-              <option value="2048">2048 x 2048</option>
-              <option value="4096">4096 x 4096</option>
+          <h2><span class="material-symbols-rounded">tune</span> Génération</h2>
+          <label>Taille
+            <select id="size">
+              <option value="512">512</option>
+              <option value="1024" selected>1024</option>
+              <option value="2048">2048</option>
+              <option value="4096">4096</option>
             </select>
           </label>
 
           <label>Type de monde
-            <select id="world-type"></select>
+            <select id="worldType"></select>
           </label>
 
-          <div class="row two">
-            <label>% de terre (Land Coverage)
-              <select id="land-coverage">
-                <option value="very-low">Très faible (20%)</option>
-                <option value="low">Faible (30%)</option>
-                <option value="medium" selected>Moyen (45%)</option>
-                <option value="high">Élevé (60%)</option>
-                <option value="very-high">Très élevé (75%)</option>
-              </select>
+          <div class="row2">
+            <label>% de terre
+              <input id="landCoverage" type="range" min="20" max="80" step="1" value="45" />
+              <span id="landCoverageValue">45%</span>
             </label>
             <label>Marge océanique
-              <select id="ocean-border">
-                <option value="near">Très proche (5%)</option>
-                <option value="standard" selected>Standard (12%)</option>
-                <option value="wide">Large (20%)</option>
-                <option value="very-wide">Très large (28%)</option>
-                <option value="immense">Immense (35%)</option>
+              <select id="oceanBorder">
+                <option value="low">faible</option>
+                <option value="standard" selected>standard</option>
+                <option value="large">large</option>
+                <option value="immense">immense</option>
               </select>
             </label>
           </div>
 
-          <div class="row two">
-            <label>Relief intérieur
-              <select id="relief-style">
-                <option value="very-flat">Très plat</option>
-                <option value="playable" selected>Jouable</option>
-                <option value="varied">Varié</option>
-                <option value="mountainous">Montagneux</option>
-                <option value="extreme">Extrême</option>
+          <div class="row2">
+            <label>Relief
+              <select id="relief">
+                <option value="flat">plat</option>
+                <option value="soft">doux</option>
+                <option value="balanced" selected>équilibré</option>
+                <option value="mountain">montagneux</option>
+                <option value="extreme">extrême</option>
               </select>
             </label>
-            <label>Profondeur océan
-              <select id="ocean-depth">
-                <option value="shallow">Peu profond</option>
-                <option value="medium" selected>Moyen</option>
-                <option value="deep">Profond</option>
+            <label>Océan
+              <select id="oceanDepth">
+                <option value="shallow">peu profond</option>
+                <option value="medium" selected>moyen</option>
+                <option value="deep">profond</option>
               </select>
             </label>
           </div>
 
-          <div class="row two">
+          <div class="row2">
             <label>Côtes
-              <select id="coast-style">
-                <option value="soft">Douces</option>
-                <option value="mixed" selected>Mixtes</option>
-                <option value="rocky">Rocheuses</option>
-                <option value="cliff">Falaises</option>
+              <select id="coastType">
+                <option value="soft">douces</option>
+                <option value="mixed" selected>mixtes</option>
+                <option value="rocky">rocheuses</option>
+                <option value="cliff">falaises</option>
               </select>
             </label>
             <label>Rivières
-              <select id="rivers-level">
-                <option value="none">Aucune</option>
-                <option value="few" selected>Quelques-unes</option>
-                <option value="medium">Moyen</option>
-                <option value="many">Beaucoup</option>
+              <select id="rivers">
+                <option value="none">aucune</option>
+                <option value="few" selected>quelques-unes</option>
+                <option value="medium">moyen</option>
+                <option value="many">beaucoup</option>
               </select>
             </label>
           </div>
 
-
-          <section class="biome-section">
-            <h3>Biomes</h3>
-            <label>Preset de biomes
-              <select id="biome-preset"></select>
-            </label>
-            <div class="biome-actions row two">
-              <button id="biome-rebalance" class="secondary" type="button">Rééquilibrer</button>
-              <button id="biome-random" class="secondary" type="button">Random mix</button>
-            </div>
-            <p id="biome-total" class="hint"></p>
-            <div id="biome-list" class="biome-list"></div>
-          </section>
-
           <label>Qualité
-            <select id="quality-mode">
-              <option value="fast">Rapide</option>
-              <option value="balanced" selected>Équilibrée</option>
-              <option value="high">Haute qualité</option>
-              <option value="extreme">Extrême (moteur procédural)</option>
+            <select id="quality">
+              <option value="fast">rapide</option>
+              <option value="balanced" selected>équilibrée</option>
+              <option value="high">haute</option>
+              <option value="extreme">extrême</option>
             </select>
           </label>
 
-          <div class="seed-row">
+          <div class="seedLine">
             <label>Seed
-              <input id="seed" type="text" value="minecraft-surface" />
+              <input id="seed" type="text" value="heightmap-stable" />
             </label>
-            <button id="random-seed" class="secondary">Seed aléatoire</button>
+            <button id="randomSeed" class="btn secondary" type="button">Seed aléatoire</button>
           </div>
 
-          <div id="quick-preview-badge" class="badge">Preview rapide</div>
-          <p id="impact-note" class="hint impact"></p>
-
-          <button id="generate" class="primary">Générer la Heightmap</button>
-          <button id="quick-preview" class="secondary">Preview rapide</button>
-          <p class="manual-message">Modifiez vos paramètres puis cliquez sur Générer.</p>
-          <div class="actions-under-main">
-            <button id="new-seed" class="secondary">Générer une nouvelle seed</button>
-            <button id="download-png" class="secondary">Télécharger PNG</button>
-            <button id="download-json" class="secondary">Exporter preset JSON</button>
+          <div class="actionGroup">
+            <button id="generate" class="btn primary" type="button">Générer la Heightmap</button>
+            <button id="exportPng" class="btn" type="button">Export PNG</button>
+            <button id="exportJson" class="btn" type="button">Export JSON</button>
+            <button id="resetPreset" class="btn secondary" type="button">Reset preset</button>
           </div>
 
-          <div class="progress-wrap"><div id="progress"></div></div>
-          <p id="pipeline-step">Modifiez vos paramètres puis cliquez sur Générer</p>
+          <div class="progressBar"><div id="progressFill"></div></div>
         </section>
 
-        <details class="card advanced" id="advanced-panel">
-          <summary>Paramètres avancés</summary>
-          <p class="hint">Réglages techniques (montagnes/rivières/nettoyage).</p>
-
-          <div class="row two">
-            <label>Min Y
-              <input id="min-y" type="number" min="-64" max="200" step="1" value="20" />
+        <details class="card">
+          <summary><span class="material-symbols-rounded">settings</span> Mode Avancé</summary>
+          <div class="row2">
+            <label>Sea level
+              <input id="seaLevel" type="number" min="0" max="255" value="64" />
             </label>
-            <label>Max Y
-              <input id="max-y" type="number" min="80" max="320" step="1" value="260" />
+            <label>Min Y export
+              <input id="minY" type="number" min="-64" max="255" value="0" />
             </label>
           </div>
-
-          <label>Mountain scale
-            <input id="mountain-scale" type="range" min="0.6" max="2.2" step="0.01" value="1.1" />
-          </label>
-
-          <label>River depth bonus
-            <input id="river-depth" type="range" min="0" max="2" step="0.01" value="0.2" />
-          </label>
-
-          <label>Cleanup strength
-            <input id="cleanup-strength" type="range" min="0" max="1" step="0.01" value="0.5" />
-          </label>
-        
-          <section class="biome-advanced-section">
-            <h3>Mode avancé · Biomes</h3>
-            <label>Transition width
-              <input id="biome-transition-width" type="range" min="0.05" max="0.7" step="0.01" value="0.25" />
+          <div class="row2">
+            <label>Max Y export
+              <input id="maxY" type="number" min="1" max="320" value="255" />
             </label>
-            <div id="biome-advanced-list" class="biome-advanced-list"></div>
-          </section>
-
+            <label>Erosion strength
+              <input id="erosionStrength" type="range" min="0" max="1" step="0.01" value="0.35" />
+            </label>
+          </div>
+          <label>Mountain intensity <input id="mountainIntensity" type="range" min="0" max="1.8" step="0.01" value="0.8" /></label>
+          <label>River depth <input id="riverDepth" type="range" min="0" max="24" step="1" value="8" /></label>
+          <label>Coastline complexity <input id="coastComplexity" type="range" min="0" max="1" step="0.01" value="0.45" /></label>
+          <label>Cleanup strength <input id="cleanupStrength" type="range" min="0" max="1" step="0.01" value="0.5" /></label>
+          <label>Biome transition width <input id="biomeTransition" type="range" min="0.05" max="0.8" step="0.01" value="0.25" /></label>
         </details>
+
+        <section class="card">
+          <h2><span class="material-symbols-rounded">eco</span> Biomes</h2>
+          <p class="hint">Activez/désactivez puis ajustez les % cibles (normalisés automatiquement).</p>
+          <div id="biomeControls" class="biomeControls"></div>
+        </section>
       </aside>
 
       <main class="center">
         <div class="toolbar">
           <label>Preview
-            <select id="preview-mode">
+            <select id="previewMode">
               <option value="grayscale">Grayscale</option>
+              <option value="biome">Biome map</option>
               <option value="hillshade">Hillshade</option>
-              <option value="contour-preview">Contours</option>
-              <option value="slope-preview">Pentes</option>
-              <option value="erosion-preview">Erosion</option>
-              <option value="rivers-preview">Rivières</option>
-              <option value="tectonic-preview">Tectonique</option>
-              <option value="altitude-heatmap">Heatmap</option>
-              <option value="coast-distance-preview">Distance côte</option>
-              <option value="biome-map">Biome Map</option>
+              <option value="heat">Altitude heatmap</option>
+              <option value="slope">Slope map</option>
+              <option value="rivers">Rivers</option>
             </select>
           </label>
-          <label>Zoom <input id="zoom" type="range" min="1" max="6" step="0.1" value="1" /></label>
-          <label class="check"><input id="show-grid" type="checkbox" /> grille 64x64</label>
         </div>
-        <div class="viewport" id="viewport">
+        <div class="canvasWrap">
           <canvas id="canvas" width="1024" height="1024"></canvas>
+          <div id="emptyState" class="emptyState">Configurez vos paramètres puis cliquez sur Générer.</div>
         </div>
       </main>
 
       <aside class="panel right">
         <section class="card">
-          <h2>Résumé</h2>
-          <ul id="config-summary"></ul>
-        </section>
-
-        <section class="card">
-          <h2>Validation</h2>
+          <h2><span class="material-symbols-rounded">insights</span> Stats</h2>
           <ul id="stats"></ul>
-          <h3>Biomes cible vs réel</h3>
-          <ul id="biome-results"></ul>
         </section>
-
         <section class="card">
-          <h2>WorldPainter Safe</h2>
-          <ul id="wp-compatibility"></ul>
+          <h2><span class="material-symbols-rounded">water</span> WorldPainter</h2>
+          <ul id="worldPainterStats"></ul>
         </section>
-
         <section class="card">
-          <h2>Distribution altitudes</h2>
-          <canvas id="histogram" width="320" height="140"></canvas>
+          <h2><span class="material-symbols-rounded">pie_chart</span> Biomes cible/réel</h2>
+          <ul id="biomeStats"></ul>
         </section>
       </aside>
     </div>
