@@ -8,69 +8,108 @@ const BORDER_PRESETS = {
 };
 
 export function resolveOceanBorder(border) {
-  if (typeof border === 'number') return border;
+  if (typeof border === 'number') return Math.max(0.02, Math.min(0.45, border));
   return BORDER_PRESETS[border] ?? 0.15;
 }
 
 export function generateLandPotential(config) {
   const { width, height, seed } = config;
-  const n1 = createValueNoise2D(`${seed}:land:macro`, 128);
-  const n2 = createValueNoise2D(`${seed}:land:detail`, 256);
+  const warpXNoise = createValueNoise2D(`${seed}:land:warp:x`, 64);
+  const warpYNoise = createValueNoise2D(`${seed}:land:warp:y`, 64);
+  const macroNoise = createValueNoise2D(`${seed}:land:macro`, 128);
+  const coastNoise = createValueNoise2D(`${seed}:land:coast`, 192);
+  const asymNoise = createValueNoise2D(`${seed}:land:asym`, 72);
+
   const arr = new Float32Array(width * height);
   const cx = width * 0.5;
   const cy = height * 0.5;
   const maxDist = Math.hypot(cx, cy);
+  const eps = 1e-6;
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       const nx = x / width;
       const ny = y / height;
-      const radial = Math.hypot(x - cx, y - cy) / maxDist;
-      const macro = fbm2D(n1, nx, ny, 5, 2.05, 0.52, 3.0);
-      const detail = fbm2D(n2, nx, ny, 3, 2.0, 0.6, 8.0);
-      arr[i] = macro * 0.75 + detail * 0.25 - radial * 0.35;
+
+      const wx = (fbm2D(warpXNoise, nx, ny, 2, 2.0, 0.5, 1.4) - 0.5) * 0.2;
+      const wy = (fbm2D(warpYNoise, nx, ny, 2, 2.0, 0.5, 1.4) - 0.5) * 0.2;
+      const sx = nx + wx;
+      const sy = ny + wy;
+
+      const dx = x - cx + wx * width;
+      const dy = y - cy + wy * height;
+      const radial = Math.hypot(dx, dy) / (maxDist + eps);
+      const theta = Math.atan2(dy + eps, dx + eps);
+
+      const macro = fbm2D(macroNoise, sx, sy, 5, 2.03, 0.53, 2.8);
+      const coastal = fbm2D(coastNoise, sx, sy, 4, 2.2, 0.58, 5.2);
+      const asym = fbm2D(asymNoise, sx + 0.27, sy - 0.19, 3, 2.0, 0.54, 1.6);
+
+      const directional = Math.sin(theta * 1.7 + asym * 4.5) * 0.09 + Math.cos(theta * 0.8 - asym * 3.2) * 0.06;
+      const deformedRadial = radial * (1 + directional);
+      const basin = Math.max(0, deformedRadial - 0.42);
+
+      arr[i] =
+        macro * 0.62 +
+        coastal * 0.26 +
+        asym * 0.12 -
+        basin * basin * 1.35 -
+        radial * 0.08;
     }
   }
+
   return arr;
 }
 
-export function applyOceanBorder(landPotential, config) {
+export function applyOceanBorderMask(landPotential, config) {
   const { width, height } = config;
   const border = resolveOceanBorder(config.oceanBorder);
-  const borderX = Math.floor(width * border);
-  const borderY = Math.floor(height * border);
+  const borderX = Math.max(1, Math.floor(width * border));
+  const borderY = Math.max(1, Math.floor(height * border));
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       const dx = Math.min(x, width - 1 - x);
       const dy = Math.min(y, height - 1 - y);
-      const fx = Math.min(1, dx / Math.max(1, borderX));
-      const fy = Math.min(1, dy / Math.max(1, borderY));
-      const falloff = Math.min(fx, fy);
-      landPotential[i] -= (1 - falloff) * 2.0;
+      const fx = Math.min(1, dx / borderX);
+      const fy = Math.min(1, dy / borderY);
+      const edgeFactor = Math.min(fx, fy);
+      const pushToOcean = 1 - edgeFactor;
+      if (pushToOcean <= 0) continue;
+      landPotential[i] -= 2.4 * pushToOcean * pushToOcean;
     }
   }
 }
 
 export function createLandMaskByCoverage(landPotential, config) {
   const total = landPotential.length;
+  const targetLand = Math.max(0.01, Math.min(0.95, config.landCoverage));
   const sorted = Array.from(landPotential).sort((a, b) => b - a);
-  const cutoffIdx = Math.floor(total * config.landCoverage);
+  const cutoffIdx = Math.floor(total * targetLand);
   const threshold = sorted[Math.min(cutoffIdx, sorted.length - 1)] ?? 0;
+
   const mask = new Uint8Array(total);
-  for (let i = 0; i < total; i++) mask[i] = landPotential[i] >= threshold ? 1 : 0;
-  return { mask, threshold };
+  let landCount = 0;
+  for (let i = 0; i < total; i++) {
+    const isLand = landPotential[i] >= threshold ? 1 : 0;
+    mask[i] = isLand;
+    landCount += isLand;
+  }
+
+  return {
+    mask,
+    threshold,
+    targetLand,
+    realLand: landCount / total
+  };
 }
 
-export function cleanupLandMask(mask, width, height, passes = 2) {
+export function cleanupLandMask(mask, width, height, passes = 3) {
   const out = new Uint8Array(mask);
-  const neighbors = [
-    -width - 1, -width, -width + 1,
-    -1, 1,
-    width - 1, width, width + 1
-  ];
+  const neighbors = [-width - 1, -width, -width + 1, -1, 1, width - 1, width, width + 1];
+
   for (let p = 0; p < passes; p++) {
     const src = new Uint8Array(out);
     for (let y = 1; y < height - 1; y++) {
@@ -78,12 +117,81 @@ export function cleanupLandMask(mask, width, height, passes = 2) {
         const i = y * width + x;
         let count = 0;
         for (const n of neighbors) count += src[i + n];
+
         if (src[i] === 1 && count <= 2) out[i] = 0;
         else if (src[i] === 0 && count >= 6) out[i] = 1;
       }
     }
   }
+
+  return removeMicroIslands(out, width, height);
+}
+
+function removeMicroIslands(mask, width, height) {
+  const visited = new Uint8Array(mask.length);
+  const labels = new Int32Array(mask.length);
+  const components = [];
+  const queue = new Int32Array(mask.length);
+
+  let currentLabel = 1;
+  for (let i = 0; i < mask.length; i++) {
+    if (!mask[i] || visited[i]) continue;
+
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = i;
+    visited[i] = 1;
+
+    let size = 0;
+    while (head < tail) {
+      const idx = queue[head++];
+      labels[idx] = currentLabel;
+      size++;
+      const x = idx % width;
+      const y = (idx / width) | 0;
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          if (!ox && !oy) continue;
+          const xx = x + ox;
+          const yy = y + oy;
+          if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+          const ni = yy * width + xx;
+          if (!mask[ni] || visited[ni]) continue;
+          visited[ni] = 1;
+          queue[tail++] = ni;
+        }
+      }
+    }
+
+    components.push({ label: currentLabel, size });
+    currentLabel++;
+  }
+
+  if (components.length <= 1) return mask;
+
+  components.sort((a, b) => b.size - a.size);
+  const keepMain = components[0].label;
+  const keepSecondary = components.filter((c, idx) => idx > 0 && c.size > width * height * 0.001).map((c) => c.label);
+  const keep = new Set([keepMain, ...keepSecondary]);
+
+  const out = new Uint8Array(mask.length);
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] && keep.has(labels[i])) out[i] = 1;
+  }
+
   return out;
+}
+
+export function enforceOceanEdges(mask, width, height) {
+  for (let x = 0; x < width; x++) {
+    mask[x] = 0;
+    mask[(height - 1) * width + x] = 0;
+  }
+  for (let y = 0; y < height; y++) {
+    mask[y * width] = 0;
+    mask[y * width + width - 1] = 0;
+  }
+  return mask;
 }
 
 export function validateNoLandTouchesEdges(mask, width, height) {
