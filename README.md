@@ -1,56 +1,39 @@
 # Heightmap Minecraft Studio
 
-Générateur avancé de topographie Minecraft 1.21.
+Refonte complète vers une architecture modulaire maintenable.
 
-## Ce que fait ce projet
+## Architecture
 
-Le moteur génère une vraie carte d'altitude surface-only, organisée par **couches altitudinales Minecraft** puis convertie en grayscale exportable.
+```text
+/src
+  /core      -> moteurs de génération (pipeline, biomes, rivières, érosion...)
+  /workers   -> worker léger qui orchestre la génération
+  /ui        -> contrôles et panneaux UI
+  /utils     -> primitives techniques (math, noise, arrays, profiler)
+  /config    -> presets + constantes + settings centralisés
+  /render    -> renderers preview spécialisés
+  /styles    -> CSS découpé (variables/layout/components)
+main.js      -> bootstrap et coordination app/worker
+index.html   -> shell UI
+```
 
-Pipeline appliqué (obligatoire) :
+## Pipeline
 
-1. génération de masse terrestre (asymétrique + fracturation côtière)
-2. altitudes principales (macro/meso/micro relief)
-3. couches altitudinales Minecraft
-4. chaînes montagneuses (ridged + logique tectonique)
-5. vallées cohérentes (convergence + drainage)
-6. rivières downhill jusqu'à la mer
-7. érosion (hydraulique + thermique + pente)
-8. détails locaux contextuels
-9. nettoyage anti-artefacts
-10. quantification entière Minecraft
-11. conversion grayscale exportable
+`generateTerrain(config)` exécute explicitement:
 
-## Plage d'altitudes
+1. landMask
+2. baseHeight
+3. biome attribution
+4. mountain shaping
+5. river carving
+6. erosion
+7. quantization
+8. export preview
 
-- monde Minecraft 1.21 : **Y-64 → Y320**
-- surface utile pour heightmap : **Y20 → Y260**
-- sea level pivot : **Y63/Y64**
-
-## Fonctionnalités principales
-
-- UI moderne avec sections: Terrain, Sea Level, Surface Layers, Mountains, Rivers, Coast.
-- Couches altitudinales dédiées (abysses, océan, shelf, plages, plaines, collines, montagnes, pics).
-- Génération de côtes crédibles (baies, caps, péninsules, falaises/plages).
-- Montagnes ridged + massifs + vallées + rivières downhill.
-- Nettoyage terrain (anti micro-îles, anti-trous, anti-spikes incohérents).
-- Visualisations: grayscale, hillshade, contour lines, slope view, altitude heatmap.
-- Exports PNG 8-bit, PGM 16-bit, JSON preset.
-
-## Lancer
-
-Projet statique:
+## Démarrage
 
 ```bash
 python3 -m http.server 8000
 ```
 
 Puis ouvrir `http://localhost:8000`.
-
-## Système de biomes (nouveau)
-
-La génération inclut désormais un pipeline dédié biomes: `landMask`, `distanceToCoast`, `baseHeight`, `moistureMap`, `temperatureMap`, `biomeMap`, `biomeInfluenceMap`, `terrainHeight`.
-
-- profils biome centralisés dans `biome-profiles.js`
-- mix de biomes configurable (actifs, % cible, lock, randomize, rééquilibrage)
-- influence réelle des biomes sur altitude, rivières, côtes et érosion
-- preview `Biome Map` + stats cible/réel
