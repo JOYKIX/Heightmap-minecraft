@@ -12,6 +12,12 @@ const fract = (v) => v - Math.floor(v);
 const idx = (x, y, width) => y * width + x;
 
 const BIOMES = self.BIOME_SYSTEM.BIOME_PROFILES;
+const QUALITY_PROFILE = {
+  fast: { erosionPasses: 1, thermalPasses: 1, riverSourceMul: 1, detail: 0.7 },
+  balanced: { erosionPasses: 2, thermalPasses: 2, riverSourceMul: 1.25, detail: 1 },
+  high: { erosionPasses: 3, thermalPasses: 3, riverSourceMul: 1.55, detail: 1.2 },
+  extreme: { erosionPasses: 5, thermalPasses: 4, riverSourceMul: 2.1, detail: 1.4 }
+};
 
 function hashString(str) {
   let h = 2166136261;
@@ -72,11 +78,9 @@ function ridged(x, y, seed, sharpness = 1.5) {
 function createLandPotential(x, y, width, height, cfg, seedNum) {
   const nx = x / Math.max(1, width - 1) - 0.5;
   const ny = y / Math.max(1, height - 1) - 0.5;
-
   const baseShape = cfg.shapeElongation;
   const warpedX = nx * baseShape.x + (fbm(nx * 3.2, ny * 3.2, seedNum + 11, 4, 2.1, 0.5) - 0.5) * cfg.domainWarp;
   const warpedY = ny * baseShape.y + (fbm(nx * 3.2, ny * 3.2, seedNum + 17, 4, 2.1, 0.5) - 0.5) * cfg.domainWarp;
-
   const d = Math.hypot(warpedX, warpedY);
   const normalized = d / Math.max(0.18, cfg.mainIslandRadius);
   const radial = 1 - smoothstep(clamp(normalized, 0, 1));
@@ -87,7 +91,6 @@ function createLandPotential(x, y, width, height, cfg, seedNum) {
 
   const borderN = Math.min(x, y, width - 1 - x, height - 1 - y) / Math.max(1, Math.min(width, height));
   const borderMask = smoothstep(clamp((borderN - cfg.oceanBorderNormalized) / Math.max(0.0001, 0.18), 0, 1));
-
   return clamp(radial * 0.62 + lowFreq * 0.22 + coast * cfg.coastComplexity + (fracture - 0.5) * 0.1, 0, 1) * borderMask;
 }
 
@@ -110,7 +113,6 @@ function cleanupMask(mask, width, height) {
   let removedMicroIslands = 0;
   let removedWaterHoles = 0;
   const out = new Uint8Array(mask);
-
   for (let y = 1; y < height - 1; y += 1) {
     for (let x = 1; x < width - 1; x += 1) {
       const i = idx(x, y, width);
@@ -132,7 +134,6 @@ function cleanupMask(mask, width, height) {
       }
     }
   }
-
   mask.set(out);
   return { removedMicroIslands, removedWaterHoles };
 }
@@ -145,7 +146,7 @@ function distanceToCoast(mask, width, height) {
       const i = idx(x, y, width);
       const isLand = mask[i] === 1;
       let nearest = maxD;
-      for (let r = 1; r < 36; r += 1) {
+      for (let r = 1; r < 40; r += 1) {
         let found = false;
         for (let oy = -r; oy <= r; oy += 1) {
           for (let ox = -r; ox <= r; ox += 1) {
@@ -176,13 +177,12 @@ function climateSuitability(profile, moisture, temperature, altitude, coastalnes
   const tWidth = Math.max(0.05, (profile.temperatureRange[1] - profile.temperatureRange[0]) * 0.5);
   const mScore = 1 - clamp(Math.abs(moisture - mCenter) / mWidth, 0, 1.4);
   const tScore = 1 - clamp(Math.abs(temperature - tCenter) / tWidth, 0, 1.4);
-
   const altScore = 1 - clamp(Math.abs(altitude - profile.preferredAltitude) / Math.max(8, profile.maxAltitude - profile.minAltitude), 0, 1.4);
   const coastScore = 1 - Math.abs(coastalness - profile.coastAffinity);
   return mScore * 0.34 + tScore * 0.3 + altScore * 0.28 + coastScore * 0.08;
 }
 
-function computeBiomeHeight(profile, x, y, width, height, baseHeight, seedNum, inland, moisture) {
+function computeBiomeHeight(profile, x, y, width, height, baseHeight, seedNum, inland, moisture, worldStructure) {
   const nx = x / width;
   const ny = y / height;
   const macro = fbm(nx * (1.5 + profile.noiseScale), ny * (1.5 + profile.noiseScale), seedNum + 1200 + profile.preferredAltitude, 4, 2.04, 0.52);
@@ -193,6 +193,7 @@ function computeBiomeHeight(profile, x, y, width, height, baseHeight, seedNum, i
   h += (macro - 0.5) * 16 * profile.roughness;
   h += (micro - 0.5) * 10 * profile.roughness;
   h += ridge * profile.mountainInfluence * 42 * inland;
+  h += (worldStructure - 0.5) * (12 + profile.mountainInfluence * 18);
 
   if (profile.id === 'plains') h = lerp(h, Math.round(h / 2) * 2, profile.flatness * 0.62);
   if (profile.id === 'mountains') h += Math.pow(ridge, 1.1) * 55;
@@ -218,6 +219,7 @@ function estimateBiomeRegions(biomeMap, width, height, oceanIndex) {
   let regions = 0;
   const qx = new Int32Array(biomeMap.length);
   const qy = new Int32Array(biomeMap.length);
+  const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -233,7 +235,6 @@ function estimateBiomeRegions(biomeMap, width, height, oceanIndex) {
         const cx = qx[head];
         const cy = qy[head];
         head += 1;
-        const nb = [[1,0],[-1,0],[0,1],[0,-1]];
         for (let n = 0; n < 4; n += 1) {
           const xx = cx + nb[n][0];
           const yy = cy + nb[n][1];
@@ -249,11 +250,33 @@ function estimateBiomeRegions(biomeMap, width, height, oceanIndex) {
   return regions;
 }
 
+function computeTectonicRegions(regionCount, rng) {
+  const regions = [];
+  for (let r = 0; r < regionCount; r += 1) {
+    const angle = rng() * Math.PI * 2;
+    regions.push({
+      cx: rng(), cy: rng(),
+      vx: Math.cos(angle), vy: Math.sin(angle),
+      force: 0.5 + rng() * 0.5,
+      uplift: -0.4 + rng() * 1.6
+    });
+  }
+  return regions;
+}
+
+function heightDistributionCurve(v) {
+  const x = clamp(v, 0, 1);
+  if (x < 0.58) return Math.pow(x / 0.58, 1.8) * 0.45;
+  if (x < 0.9) return 0.45 + Math.pow((x - 0.58) / 0.32, 1.25) * 0.42;
+  return 0.87 + Math.pow((x - 0.9) / 0.1, 2.6) * 0.13;
+}
+
 function generate(payload) {
   const { cfg, phase } = payload;
   const width = cfg.width;
   const height = cfg.height;
   const len = width * height;
+  const q = QUALITY_PROFILE[cfg.quality] || QUALITY_PROFILE.balanced;
 
   const seedNum = hashString(`${cfg.seed}-${cfg.targetWidth}-${cfg.targetHeight}-${phase}`);
   const rng = mulberry32(seedNum ^ 0x9abcde);
@@ -261,13 +284,22 @@ function generate(payload) {
 
   const map = new Float32Array(len);
   const baseHeight = new Float32Array(len);
+  const worldStructureMap = new Float32Array(len);
   const moistureMap = new Float32Array(len);
   const temperatureMap = new Float32Array(len);
   const biomeInfluenceMap = new Float32Array(len);
   const potential = new Float32Array(len);
   const heights = new Uint16Array(len);
-  const slope = new Float32Array(len);
+  const slopeMap = new Float32Array(len);
+  const cliffMap = new Float32Array(len);
   const biomeMap = new Uint8Array(len);
+  const tectonicMap = new Float32Array(len);
+  const mountainMap = new Float32Array(len);
+  const basinMap = new Float32Array(len);
+  const terrainDirectionMap = new Float32Array(len);
+  const flowDirectionMap = new Float32Array(len);
+  const erosionMap = new Float32Array(len);
+  const riverFlowMap = new Float32Array(len);
 
   const seaLevel = 64;
   const minY = clamp(cfg.minY, SURFACE_MIN_Y, 240);
@@ -301,10 +333,42 @@ function generate(payload) {
   }
   dynamicBiomes.forEach((b) => { b.targetPercent = (Math.max(0, b.targetPercent) / totalTarget) * 100; });
 
-  post('1/9 Générer masse terrestre', 0.06);
+  post('1/11 Masse terrestre + macrosquelette', 0.05);
+  const tectonicRegions = computeTectonicRegions(6 + Math.floor(rng() * 4), rng);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      potential[idx(x, y, width)] = createLandPotential(x, y, width, height, cfg, seedNum);
+      const i = idx(x, y, width);
+      potential[i] = createLandPotential(x, y, width, height, cfg, seedNum);
+
+      const nx = x / Math.max(1, width - 1);
+      const ny = y / Math.max(1, height - 1);
+      let collision = 0;
+      let directionX = 0;
+      let directionY = 0;
+      let uplift = 0;
+
+      for (let r = 0; r < tectonicRegions.length; r += 1) {
+        const reg = tectonicRegions[r];
+        const dx = nx - reg.cx;
+        const dy = ny - reg.cy;
+        const d = Math.hypot(dx, dy);
+        const w = Math.exp(-d * 4.5) * reg.force;
+        const dot = (dx * reg.vx + dy * reg.vy) / Math.max(0.0001, d);
+        collision += w * (1 - Math.abs(dot));
+        directionX += reg.vx * w;
+        directionY += reg.vy * w;
+        uplift += reg.uplift * w;
+      }
+
+      const plateNoise = fbm(nx * 2.1, ny * 2.1, seedNum + 8100, 4, 2.02, 0.53);
+      tectonicMap[i] = clamp(0.5 + collision * 0.62 + uplift * 0.28 + (plateNoise - 0.5) * 0.3, 0, 1);
+      terrainDirectionMap[i] = (Math.atan2(directionY, directionX) + Math.PI) / (Math.PI * 2);
+
+      const ridgeA = ridged(nx * 3.8 + directionX * 0.4, ny * 3.8 + directionY * 0.4, seedNum + 9100, 1.8);
+      const basinSeed = fbm(nx * 1.6, ny * 1.6, seedNum + 9200, 4, 2.08, 0.5);
+      mountainMap[i] = clamp((tectonicMap[i] * 0.7 + ridgeA * 0.7) - basinSeed * 0.4, 0, 1);
+      basinMap[i] = clamp((1 - tectonicMap[i]) * 0.55 + (1 - ridgeA) * 0.25 + (1 - basinSeed) * 0.2, 0, 1);
+      worldStructureMap[i] = clamp(mountainMap[i] * 0.65 + (1 - basinMap[i]) * 0.35, 0, 1);
     }
   }
 
@@ -317,29 +381,34 @@ function generate(payload) {
   for (let i = 0; i < len; i += 1) landCount += landMask[i];
   const realCoverage = landCount / len;
 
-  post('2/9 Distance à la côte', 0.14);
-  const coastDistance = distanceToCoast(landMask, width, height);
+  post('2/11 Distance côte + distribution altitude', 0.13);
+  const coastDistanceMap = distanceToCoast(landMask, width, height);
 
-  post('3/9 Cartes climatiques + base altitude', 0.26);
+  post('3/11 Climat + altitude de base', 0.23);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const i = idx(x, y, width);
       const nx = x / width;
       const ny = y / height;
-      const inland = clamp(coastDistance[i] / 30, 0, 1);
+      const inland = clamp(coastDistanceMap[i] / 34, 0, 1);
       const macro = fbm(nx * 2, ny * 2, seedNum + 101, 4, 2, 0.52);
       const meso = fbm(nx * 6, ny * 6, seedNum + 131, 4, 2.2, 0.48);
+      const basinPull = Math.pow(basinMap[i], 1.2);
+      const mountainLift = Math.pow(mountainMap[i], 1.3);
 
       if (landMask[i]) {
-        baseHeight[i] = 70 + macro * 18 + meso * 12 + inland * 18;
+        const raw = 0.22 + macro * 0.26 + meso * 0.16 + inland * 0.18 + mountainLift * 0.28 - basinPull * 0.2;
+        const distributed = heightDistributionCurve(raw);
+        baseHeight[i] = lerp(66, maxY - 8, distributed);
       } else {
-        const shelf = clamp(coastDistance[i] / cfg.shelfWidthCells, 0, 1);
+        const shelf = clamp(coastDistanceMap[i] / cfg.shelfWidthCells, 0, 1);
         baseHeight[i] = lerp(63, cfg.oceanFloorMin - fbm(nx * 5, ny * 5, seedNum + 191, 3, 2.1, 0.5) * cfg.oceanDepthNoise, smoothstep(shelf));
       }
 
       const humidityNoise = fbm(nx * 3.5, ny * 3.5, seedNum + 222, 4, 2.04, 0.5);
       const rainShadow = clamp(1 - (baseHeight[i] - 68) / 170, 0, 1);
-      moistureMap[i] = clamp(humidityNoise * 0.7 + (1 - inland) * 0.2 + rainShadow * 0.2, 0, 1);
+      const coastalHum = clamp(1 - coastDistanceMap[i] / 28, 0, 1);
+      moistureMap[i] = clamp(humidityNoise * 0.6 + coastalHum * 0.15 + rainShadow * 0.18 + basinMap[i] * 0.12, 0, 1);
 
       const latitude = 1 - Math.abs(ny * 2 - 1);
       const tempNoise = fbm(nx * 2.7, ny * 2.7, seedNum + 254, 3, 2.1, 0.5);
@@ -347,7 +416,7 @@ function generate(payload) {
     }
   }
 
-  post('4/9 Placement biomes (règles + % cible)', 0.4);
+  post('4/11 Biomes cohérents', 0.36);
   const coastProfile = profilesById.coast;
   const oceanProfile = profilesById.ocean;
   const assignedCounts = Object.fromEntries(dynamicBiomes.map((b) => [b.id, 0]));
@@ -361,15 +430,14 @@ function generate(payload) {
         map[i] = baseHeight[i];
         continue;
       }
-
-      const coastBand = coastDistance[i] <= Math.max(2, cfg.beachWidthCells + 2);
+      const coastBand = coastDistanceMap[i] <= Math.max(2, cfg.beachWidthCells + 2);
       if (coastBand) {
         biomeMap[i] = coastProfile.biomeIndex;
         map[i] = lerp(baseHeight[i], coastProfile.preferredAltitude, 0.9);
         continue;
       }
 
-      const coastalness = clamp(1 - coastDistance[i] / 35, 0, 1);
+      const coastalness = clamp(1 - coastDistanceMap[i] / 35, 0, 1);
       let best = dynamicBiomes[0];
       let bestScore = -999;
 
@@ -378,7 +446,7 @@ function generate(payload) {
         const suitability = climateSuitability(biome, moistureMap[i], temperatureMap[i], baseHeight[i], coastalness);
         const cell = fbm((x / width) * 1.2, (y / height) * 1.2, seedNum + 4000 + biome.biomeIndex * 17, 3, 2, 0.52);
         const quotaPressure = assignedCounts[biome.id] >= maxCounts[biome.id] ? -0.12 : 0;
-        const score = suitability + cell * 0.35 + quotaPressure;
+        const score = suitability + cell * 0.35 + worldStructureMap[i] * biome.mountainInfluence * 0.22 + quotaPressure;
         if (score > bestScore) {
           bestScore = score;
           best = biome;
@@ -387,11 +455,11 @@ function generate(payload) {
 
       biomeMap[i] = best.biomeIndex;
       assignedCounts[best.id] += 1;
-      map[i] = computeBiomeHeight(best, x, y, width, height, baseHeight[i], seedNum, clamp(coastDistance[i] / 32, 0, 1), moistureMap[i]);
+      map[i] = computeBiomeHeight(best, x, y, width, height, baseHeight[i], seedNum, clamp(coastDistanceMap[i] / 32, 0, 1), moistureMap[i], worldStructureMap[i]);
     }
   }
 
-  post('5/9 Transitions douces entre biomes', 0.52);
+  post('5/11 Transitions + direction de terrain', 0.47);
   const scratch = new Float32Array(map);
   const transitionPx = Math.max(1, Math.round(cfg.biomeTransitionWidth * 12));
   for (let y = 1; y < height - 1; y += 1) {
@@ -412,34 +480,72 @@ function generate(payload) {
       }
       const influence = clamp(diff / 8, 0, 1);
       biomeInfluenceMap[i] = influence;
-      if (coastDistance[i] <= transitionPx) {
-        scratch[i] = lerp(map[i], sum / count, influence * 0.38);
-      } else {
-        scratch[i] = lerp(map[i], sum / count, influence * 0.26);
-      }
+      const warp = fbm((x / width) * 11, (y / height) * 11, seedNum + 5100, 2, 2.2, 0.5) - 0.5;
+      const dirEffect = (terrainDirectionMap[i] - 0.5) * 8;
+      scratch[i] = lerp(map[i], sum / count, influence * (coastDistanceMap[i] <= transitionPx ? 0.38 : 0.26));
+      scratch[i] += warp * (2.5 * q.detail) + dirEffect * 0.2;
     }
   }
   map.set(scratch);
 
-  post('6/9 Rivières + érosion par biome', 0.68);
+  post('6/11 Drainage + flow accumulation', 0.58);
+  const order = new Uint32Array(len);
+  for (let i = 0; i < len; i += 1) {
+    order[i] = i;
+    riverFlowMap[i] = landMask[i] ? 1 : 0;
+  }
+  order.sort((a, b) => map[b] - map[a]);
+
+  for (let oi = 0; oi < len; oi += 1) {
+    const i = order[oi];
+    if (!landMask[i]) continue;
+    const x = i % width;
+    const y = Math.floor(i / width);
+    let next = i;
+    let low = map[i];
+    for (let oy = -1; oy <= 1; oy += 1) {
+      for (let ox = -1; ox <= 1; ox += 1) {
+        if (!ox && !oy) continue;
+        const xx = x + ox;
+        const yy = y + oy;
+        if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+        const j = idx(xx, yy, width);
+        if (map[j] < low) {
+          low = map[j];
+          next = j;
+        }
+      }
+    }
+    if (next !== i) {
+      riverFlowMap[next] += riverFlowMap[i] * 0.98;
+      flowDirectionMap[i] = (Math.atan2(Math.floor(next / width) - y, (next % width) - x) + Math.PI) / (Math.PI * 2);
+    }
+  }
+
+  post('7/11 Rivières hiérarchisées + vallées', 0.7);
   let riversCreated = 0;
-  const sources = Math.floor(len * cfg.riverAmountDensity * 1.6);
+  const sources = Math.floor(len * cfg.riverAmountDensity * q.riverSourceMul * 2.4);
   for (let s = 0; s < sources; s += 1) {
-    let x = Math.floor(rng() * (width - 2)) + 1;
-    let y = Math.floor(rng() * (height - 2)) + 1;
+    const pick = order[Math.floor(rng() * Math.max(1, Math.floor(len * 0.4)))];
+    let x = pick % width;
+    let y = Math.floor(pick / width);
     let i = idx(x, y, width);
     if (!landMask[i]) continue;
     const profile = BIOMES[biomeMap[i]];
     if (rng() > profile.riverAffinity) continue;
-    if (map[i] < profile.preferredAltitude) continue;
+    if (riverFlowMap[i] < 6) continue;
 
     riversCreated += 1;
-    const widthMul = Math.max(1, Math.round(cfg.riverWidth * profile.riverWidthMultiplier));
-    const depthMul = cfg.riverDepth * profile.riverDepthMultiplier;
-    const steps = Math.floor((width + height) * 0.32);
+    const hierarchy = clamp(Math.log2(riverFlowMap[i]) / 6, 0, 1);
+    const widthMul = Math.max(1, Math.round((cfg.riverWidth * profile.riverWidthMultiplier) + hierarchy * 3));
+    const depthMul = cfg.riverDepth * profile.riverDepthMultiplier * (0.8 + hierarchy * 0.8);
+    const steps = Math.floor((width + height) * 0.42);
+
     for (let step = 0; step < steps; step += 1) {
       i = idx(x, y, width);
-      map[i] -= depthMul;
+      const meander = (fbm(x * 0.07, y * 0.07, seedNum + 6900, 2, 2, 0.5) - 0.5) * 2;
+      map[i] -= depthMul * (0.8 + hierarchy * 0.6);
+      erosionMap[i] += 0.24 + hierarchy * 0.28;
 
       for (let oy = -widthMul; oy <= widthMul; oy += 1) {
         for (let ox = -widthMul; ox <= widthMul; ox += 1) {
@@ -447,82 +553,111 @@ function generate(payload) {
           const yy = y + oy;
           if (xx < 1 || yy < 1 || xx >= width - 1 || yy >= height - 1) continue;
           const j = idx(xx, yy, width);
-          map[j] -= depthMul * 0.22;
-          map[j] -= profile.valleyStrength * 0.06;
+          const r = Math.hypot(ox, oy) / Math.max(1, widthMul);
+          const bank = clamp(1 - r, 0, 1);
+          map[j] -= depthMul * bank * 0.38;
+          map[j] -= profile.valleyStrength * bank * 0.08;
+          erosionMap[j] += bank * 0.12;
         }
       }
 
-      let nextX = x;
-      let nextY = y;
+      let next = i;
       let low = map[i];
       for (let oy = -1; oy <= 1; oy += 1) {
         for (let ox = -1; ox <= 1; ox += 1) {
           if (!ox && !oy) continue;
-          const xx = x + ox;
-          const yy = y + oy;
-          const h = map[idx(xx, yy, width)];
+          const xx = x + ox + Math.round(meander * (oy === 0 ? 1 : 0));
+          const yy = y + oy + Math.round(meander * (ox === 0 ? 1 : 0));
+          if (xx < 1 || yy < 1 || xx >= width - 1 || yy >= height - 1) continue;
+          const j = idx(xx, yy, width);
+          const h = map[j] - riverFlowMap[j] * 0.01;
           if (h < low) {
             low = h;
-            nextX = xx;
-            nextY = yy;
+            next = j;
           }
         }
       }
-      if (nextX === x && nextY === y) break;
-      x = nextX;
-      y = nextY;
-      if (map[idx(x, y, width)] <= seaLevel + 0.2 || !landMask[idx(x, y, width)]) break;
+      if (next === i) break;
+      x = next % width;
+      y = Math.floor(next / width);
+      if (map[next] <= seaLevel + 0.5 || !landMask[next]) break;
     }
   }
 
-  for (let i = 0; i < len; i += 1) {
-    if (!landMask[i]) continue;
-    const profile = BIOMES[biomeMap[i]];
-    const e = profile.erosionStrength;
-    map[i] = lerp(map[i], baseHeight[i], e * 0.08);
-  }
-
-  post('7/9 Nettoyage + quantification Y Minecraft', 0.82);
+  post('8/11 Erosion hydraulique + thermique', 0.82);
   const clean = new Float32Array(map);
-  for (let pass = 0; pass < 2; pass += 1) {
+  for (let pass = 0; pass < q.erosionPasses; pass += 1) {
     for (let y = 1; y < height - 1; y += 1) {
       for (let x = 1; x < width - 1; x += 1) {
         const i = idx(x, y, width);
+        if (!landMask[i]) continue;
         const avg = (map[idx(x - 1, y, width)] + map[idx(x + 1, y, width)] + map[idx(x, y - 1, width)] + map[idx(x, y + 1, width)]) / 4;
-        if (Math.abs(map[i] - avg) > 20) clean[i] = lerp(map[i], avg, 0.32);
+        const slope = Math.abs(map[idx(x - 1, y, width)] - map[idx(x + 1, y, width)]) + Math.abs(map[idx(x, y - 1, width)] - map[idx(x, y + 1, width)]);
+        const hydro = clamp(riverFlowMap[i] / 24, 0, 1);
+        const cliffProtect = clamp((slope - 16) / 20, 0, 1);
+        const erode = (0.08 + hydro * 0.28) * (1 - cliffProtect * 0.45);
+        clean[i] = lerp(map[i], avg, erode);
+        erosionMap[i] += erode;
       }
     }
     map.set(clean);
   }
 
-  let minGenerated = 999;
-  let maxGenerated = -999;
-  for (let i = 0; i < len; i += 1) {
-    const h = clamp(Math.round(map[i]), minY, maxY);
-    heights[i] = h;
-    minGenerated = Math.min(minGenerated, h);
-    maxGenerated = Math.max(maxGenerated, h);
+  for (let pass = 0; pass < q.thermalPasses; pass += 1) {
+    for (let y = 1; y < height - 1; y += 1) {
+      for (let x = 1; x < width - 1; x += 1) {
+        const i = idx(x, y, width);
+        if (!landMask[i]) continue;
+        const n = idx(x, y - 1, width);
+        const s = idx(x, y + 1, width);
+        const e = idx(x + 1, y, width);
+        const w = idx(x - 1, y, width);
+        const maxDrop = Math.max(map[i] - map[n], map[i] - map[s], map[i] - map[e], map[i] - map[w]);
+        if (maxDrop > 8) {
+          const moved = (maxDrop - 8) * 0.18;
+          map[i] -= moved;
+          clean[n] += moved * 0.25;
+          clean[s] += moved * 0.25;
+          clean[e] += moved * 0.25;
+          clean[w] += moved * 0.25;
+          erosionMap[i] += 0.08;
+        }
+      }
+    }
   }
 
-  post('8/9 Export grayscale WorldPainter', 0.92);
-  const image = new Uint8ClampedArray(len * 4);
+  post('9/11 Finalisation relief + pentes', 0.9);
+  let minGenerated = 999;
+  let maxGenerated = -999;
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const i = idx(x, y, width);
-      const c = heights[i];
-      const l = heights[idx(Math.max(0, x - 1), y, width)];
-      const r = heights[idx(Math.min(width - 1, x + 1), y, width)];
-      const u = heights[idx(x, Math.max(0, y - 1), width)];
-      const d = heights[idx(x, Math.min(height - 1, y + 1), width)];
-      slope[i] = Math.abs(r - l) + Math.abs(d - u);
+      const l = map[idx(Math.max(0, x - 1), y, width)];
+      const r = map[idx(Math.min(width - 1, x + 1), y, width)];
+      const u = map[idx(x, Math.max(0, y - 1), width)];
+      const d = map[idx(x, Math.min(height - 1, y + 1), width)];
+      slopeMap[i] = Math.abs(r - l) + Math.abs(d - u);
+      cliffMap[i] = clamp((slopeMap[i] - 12) / 25, 0, 1);
 
-      const g = Math.round(clamp((c - MC_MIN_Y) / (MC_MAX_Y - MC_MIN_Y), 0, 1) * 255);
-      const o = i * 4;
-      image[o] = g;
-      image[o + 1] = g;
-      image[o + 2] = g;
-      image[o + 3] = 255;
+      if (!landMask[i]) {
+        map[i] = Math.min(map[i], seaLevel - 1);
+      }
+      const h = clamp(Math.round(map[i]), minY, maxY);
+      heights[i] = h;
+      minGenerated = Math.min(minGenerated, h);
+      maxGenerated = Math.max(maxGenerated, h);
     }
+  }
+
+  post('10/11 Export grayscale WorldPainter', 0.96);
+  const image = new Uint8ClampedArray(len * 4);
+  for (let i = 0; i < len; i += 1) {
+    const g = Math.round(clamp((heights[i] - MC_MIN_Y) / (MC_MAX_Y - MC_MIN_Y), 0, 1) * 255);
+    const o = i * 4;
+    image[o] = g;
+    image[o + 1] = g;
+    image[o + 2] = g;
+    image[o + 3] = 255;
   }
 
   const biomeCounts = new Array(BIOMES.length).fill(0);
@@ -552,6 +687,8 @@ function generate(payload) {
     biomeRegionCount: regions,
     biomeDistribution: distribution,
     biomePalette,
+    tectonicRegionCount: tectonicRegions.length,
+    quality: cfg.quality,
     worldPainterSafe: true,
     worldPainterTips: {
       lowMapping: `0 → Y${minGenerated}`,
@@ -561,8 +698,52 @@ function generate(payload) {
     }
   };
 
-  post('9/9 Terminé', 1);
-  self.postMessage({ type: 'done', phase, width, height, heights, slope, biomeMap, image, config: cfg }, [heights.buffer, slope.buffer, biomeMap.buffer, image.buffer]);
+  post('11/11 Terminé', 1);
+  self.postMessage({
+    type: 'done',
+    phase,
+    width,
+    height,
+    heights,
+    slope: slopeMap,
+    biomeMap,
+    image,
+    config: cfg,
+    internalMaps: {
+      landMask,
+      moistureMap,
+      temperatureMap,
+      tectonicMap,
+      erosionMap,
+      mountainMap,
+      basinMap,
+      riverFlowMap,
+      terrainDirectionMap,
+      coastDistanceMap,
+      biomeInfluenceMap,
+      slopeMap,
+      cliffMap,
+      flowDirectionMap
+    }
+  }, [
+    heights.buffer,
+    slopeMap.buffer,
+    biomeMap.buffer,
+    image.buffer,
+    landMask.buffer,
+    moistureMap.buffer,
+    temperatureMap.buffer,
+    tectonicMap.buffer,
+    erosionMap.buffer,
+    mountainMap.buffer,
+    basinMap.buffer,
+    riverFlowMap.buffer,
+    terrainDirectionMap.buffer,
+    coastDistanceMap.buffer,
+    biomeInfluenceMap.buffer,
+    cliffMap.buffer,
+    flowDirectionMap.buffer
+  ]);
 }
 
 self.onmessage = (event) => {
