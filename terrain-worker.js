@@ -7,7 +7,7 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const smoothstep = (t) => t * t * (3 - 2 * t);
 const fract = (v) => v - Math.floor(v);
-const RADIAL_EPSILON = 0.0001;
+const idx = (x, y, width) => y * width + x;
 
 function hashString(str) {
   let h = 2166136261;
@@ -52,7 +52,7 @@ function fbm(x, y, seed, octaves = 5, lacunarity = 2, gain = 0.5) {
   let total = 0;
   let norm = 0;
   for (let i = 0; i < octaves; i += 1) {
-    total += noise2D(x * f, y * f, seed + i * 19.7) * a;
+    total += noise2D(x * f, y * f, seed + i * 31.7) * a;
     norm += a;
     f *= lacunarity;
     a *= gain;
@@ -60,104 +60,110 @@ function fbm(x, y, seed, octaves = 5, lacunarity = 2, gain = 0.5) {
   return total / Math.max(0.0001, norm);
 }
 
-function ridged(x, y, seed, sharpness = 1.4, octaves = 5) {
-  const n = fbm(x, y, seed, octaves, 2.03, 0.52) * 2 - 1;
+function ridged(x, y, seed, sharpness = 1.5) {
+  const n = fbm(x, y, seed, 5, 2.03, 0.52) * 2 - 1;
   return Math.pow(1 - Math.abs(n), sharpness);
 }
 
-function idx(x, y, width) {
-  return y * width + x;
-}
-
-const QUALITY = {
-  fast: { octavesDelta: -2, erosionPasses: 2, riverStepsMul: 0.65, cleanupPasses: 1, detailMul: 0.65 },
-  balanced: { octavesDelta: -1, erosionPasses: 3, riverStepsMul: 0.85, cleanupPasses: 2, detailMul: 0.85 },
-  high: { octavesDelta: 0, erosionPasses: 4, riverStepsMul: 1, cleanupPasses: 3, detailMul: 1 },
-  extreme: { octavesDelta: 1, erosionPasses: 5, riverStepsMul: 1.2, cleanupPasses: 4, detailMul: 1.2 }
-};
-
-function qOct(base, quality) {
-  return Math.max(2, base + QUALITY[quality].octavesDelta);
-}
-
-function normalizedGradient(x, y, width, height, angle) {
-  const dx = Math.cos(angle);
-  const dy = Math.sin(angle);
-  const nx = x / (width - 1) - 0.5;
-  const ny = y / (height - 1) - 0.5;
-  const g = nx * dx + ny * dy;
-  return (g + 0.75) / 1.5;
-}
-
-function buildLandmass(x, y, width, height, cfg, seedNum) {
+function createLandPotential(x, y, width, height, cfg, seedNum) {
   const nx = x / Math.max(1, width - 1) - 0.5;
   const ny = y / Math.max(1, height - 1) - 0.5;
 
-  // Décaler le centre pour éviter un pivot exact (0,0), source de singularités et d'étoiles.
-  const centerOffsetX = (fbm(3.17, 8.41, seedNum + 901, 3, 2.11, 0.53) - 0.5) * 0.12;
-  const centerOffsetY = (fbm(9.73, 2.67, seedNum + 907, 3, 2.09, 0.51) - 0.5) * 0.12;
-  const cx = nx - centerOffsetX;
-  const cy = ny - centerOffsetY;
+  const baseShape = cfg.shapeElongation;
+  const warpedX = nx * baseShape.x + (fbm(nx * 3.2, ny * 3.2, seedNum + 11, 4, 2.1, 0.5) - 0.5) * cfg.domainWarp;
+  const warpedY = ny * baseShape.y + (fbm(nx * 3.2, ny * 3.2, seedNum + 17, 4, 2.1, 0.5) - 0.5) * cfg.domainWarp;
 
-  // Domain warp non centré pour casser la symétrie radiale/polaire.
-  const preWarpX = (fbm(cx * 2.2 + 11.3, cy * 2.2 - 7.1, seedNum + 3, qOct(4, cfg.quality), 2.07, 0.54) - 0.5) * (0.52 + cfg.coastlineComplexity * 0.45);
-  const preWarpY = (fbm(cx * 2.2 - 5.2, cy * 2.2 + 13.8, seedNum + 17, qOct(4, cfg.quality), 2.12, 0.53) - 0.5) * (0.48 + cfg.coastFragmentation * 0.4);
+  const d = Math.hypot(warpedX, warpedY);
+  const normalized = d / Math.max(0.18, cfg.mainIslandRadius);
+  const radial = 1 - smoothstep(clamp(normalized, 0, 1));
 
-  const warpA = (fbm((cx + preWarpX * 0.5) * 2.6, (cy + preWarpY * 0.5) * 2.6, seedNum + 13, qOct(4, cfg.quality), 2.15, 0.54) - 0.5) * (0.58 + cfg.coastlineComplexity * 0.45);
-  const warpB = (fbm((cx - preWarpY * 0.4) * 4.9, (cy + preWarpX * 0.4) * 4.9, seedNum + 31, qOct(3, cfg.quality), 2.22, 0.5) - 0.5) * (0.24 + cfg.coastFragmentation * 0.34);
+  const lowFreq = fbm(nx * 2.0, ny * 2.0, seedNum + 23, 5, 2.0, 0.52);
+  const coast = fbm(nx * 10.5, ny * 10.5, seedNum + 29, 4, 2.18, 0.46);
+  const fracture = ridged(nx * 7.0, ny * 7.0, seedNum + 31, 1.2 + cfg.coastSharpness * 1.1);
 
-  const eX = cx * (1.06 + cfg.islandAsymmetry * 0.72) + preWarpX * 0.32 + warpA * 0.52;
-  const eY = cy * (0.94 - cfg.islandAsymmetry * 0.35) + preWarpY * 0.32 + warpB * 0.42;
+  // Ocean border guarantee
+  const borderN = Math.min(x, y, width - 1 - x, height - 1 - y) / Math.max(1, Math.min(width, height));
+  const borderMask = smoothstep(clamp((borderN - cfg.oceanBorderNormalized) / Math.max(0.0001, 0.18), 0, 1));
 
-  const dist = Math.max(Math.hypot(eX, eY), RADIAL_EPSILON);
-  const radial = dist / Math.max(0.2, cfg.islandSize);
-
-  // Variations directionnelles sans atan2: pas de couture polaire ni interpolation angulaire visible.
-  const dirAngle1 = seedNum * 0.00073 + 0.9;
-  const dirAngle2 = seedNum * 0.00111 + 2.3;
-  const dirAngle3 = seedNum * 0.00157 + 4.8;
-  const dir1 = eX * Math.cos(dirAngle1) + eY * Math.sin(dirAngle1);
-  const dir2 = eX * Math.cos(dirAngle2) + eY * Math.sin(dirAngle2);
-  const dir3 = eX * Math.cos(dirAngle3) + eY * Math.sin(dirAngle3);
-  const directionalBreak = (fbm(dir1 * 6.8 + 0.31, dir2 * 6.2 - 0.17, seedNum + 63, qOct(4, cfg.quality), 2.13, 0.5) - 0.5) * 0.19
-    + (fbm(dir2 * 9.4 - 0.29, dir3 * 8.8 + 0.27, seedNum + 67, qOct(3, cfg.quality), 2.21, 0.48) - 0.5) * 0.11;
-
-  const continental = fbm((cx + warpA * 0.35) * 1.9 * cfg.landmassScale, (cy + warpB * 0.35) * 1.9 * cfg.landmassScale, seedNum + 79, qOct(6, cfg.quality), 2.0, 0.53);
-  const secondary = fbm((cx + preWarpX * 0.2) * 5.5, (cy + preWarpY * 0.2) * 5.5, seedNum + 87, qOct(4, cfg.quality), 2.15, 0.48);
-  const fracture = ridged((cx + warpA * 0.15) * 11.5, (cy + warpB * 0.15) * 11.5, seedNum + 109, 1.85, qOct(4, cfg.quality));
-
-  const archipelago = fbm((cx - warpB * 0.2) * 9.8, (cy + warpA * 0.2) * 9.8, seedNum + 137, qOct(5, cfg.quality), 2.2, 0.48) * cfg.archipelagoAmount;
-  const coastlineBreak = (fracture - 0.5) * cfg.coastFragmentation * 0.42;
-  const irregularRadialNoise = (fbm(cx * 3.4 + preWarpX, cy * 3.4 + preWarpY, seedNum + 149, qOct(4, cfg.quality), 2.17, 0.5) - 0.5) * 0.24;
-
-  let edge = radial
-    - directionalBreak
-    - irregularRadialNoise
-    + (0.5 - continental) * (0.95 - cfg.landmassDensity * 0.32)
-    + (0.5 - secondary) * 0.28
-    + coastlineBreak
-    + (0.53 - archipelago) * 0.22;
-
-  // Correction spéciale du centre: éviter toute structure radiale résiduelle.
-  const centerBlend = 1 - smoothstep(clamp((dist - 0.11) / 0.18, 0, 1));
-  if (centerBlend > 0) {
-    const centerNoise = fbm(cx * 13.5 + 21.7, cy * 13.5 - 18.4, seedNum + 173, qOct(4, cfg.quality), 2.25, 0.46);
-    const centerTarget = 0.58 + (0.5 - centerNoise) * 0.35;
-    edge = lerp(edge, centerTarget, centerBlend * 0.78);
-  }
-
-  return clamp(1 - smoothstep(clamp(edge * 1.42, 0, 1)), 0, 1);
+  return clamp(radial * 0.62 + lowFreq * 0.22 + coast * cfg.coastComplexity + (fracture - 0.5) * 0.1, 0, 1) * borderMask;
 }
 
-function applyMinecraftBands(signal, seaLevel) {
-  if (signal < 0.16) return lerp(25, 45, signal / 0.16);
-  if (signal < 0.32) return lerp(45, 58, (signal - 0.16) / 0.16);
-  if (signal < 0.43) return lerp(62, 68, (signal - 0.32) / 0.11);
-  if (signal < 0.63) return lerp(70, 90, (signal - 0.43) / 0.2);
-  if (signal < 0.77) return lerp(90, 120, (signal - 0.63) / 0.14);
-  if (signal < 0.89) return lerp(120, 150, (signal - 0.77) / 0.12);
-  if (signal < 0.98) return lerp(150, 220, (signal - 0.89) / 0.09);
-  return lerp(220, 255, (signal - 0.98) / 0.02);
+function adaptiveLandMask(potential, targetCoverage) {
+  const sorted = Array.from(potential);
+  sorted.sort((a, b) => a - b);
+  const thresholdIndex = Math.max(0, Math.min(sorted.length - 1, Math.floor((1 - targetCoverage) * (sorted.length - 1))));
+  const threshold = sorted[thresholdIndex];
+  const mask = new Uint8Array(potential.length);
+  let land = 0;
+  for (let i = 0; i < potential.length; i += 1) {
+    const value = potential[i] >= threshold ? 1 : 0;
+    mask[i] = value;
+    land += value;
+  }
+  return { mask, threshold, landRatio: land / potential.length };
+}
+
+function cleanupMask(mask, width, height) {
+  let removedMicroIslands = 0;
+  let removedWaterHoles = 0;
+  const out = new Uint8Array(mask);
+
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      const i = idx(x, y, width);
+      const c = mask[i];
+      let same = 0;
+      for (let oy = -1; oy <= 1; oy += 1) {
+        for (let ox = -1; ox <= 1; ox += 1) {
+          if (ox === 0 && oy === 0) continue;
+          if (mask[idx(x + ox, y + oy, width)] === c) same += 1;
+        }
+      }
+      if (c === 1 && same <= 1) {
+        out[i] = 0;
+        removedMicroIslands += 1;
+      }
+      if (c === 0 && same <= 1) {
+        out[i] = 1;
+        removedWaterHoles += 1;
+      }
+    }
+  }
+
+  mask.set(out);
+  return { removedMicroIslands, removedWaterHoles };
+}
+
+function distanceToCoast(mask, width, height) {
+  const dist = new Float32Array(mask.length);
+  const maxD = Math.max(width, height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = idx(x, y, width);
+      const isLand = mask[i] === 1;
+      let nearest = maxD;
+      for (let r = 1; r < 32; r += 1) {
+        let found = false;
+        for (let oy = -r; oy <= r; oy += 1) {
+          for (let ox = -r; ox <= r; ox += 1) {
+            const xx = x + ox;
+            const yy = y + oy;
+            if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+            const j = idx(xx, yy, width);
+            if ((mask[j] === 1) !== isLand) {
+              nearest = Math.hypot(ox, oy);
+              found = true;
+              break;
+            }
+          }
+          if (found) break;
+        }
+        if (found) break;
+      }
+      dist[i] = nearest;
+    }
+  }
+  return dist;
 }
 
 function generate(payload) {
@@ -167,323 +173,192 @@ function generate(payload) {
   const len = width * height;
 
   const map = new Float32Array(len);
-  const landMask = new Float32Array(len);
-  const mountainMask = new Float32Array(len);
-  const flow = new Float32Array(len);
   const heights = new Uint16Array(len);
   const slope = new Float32Array(len);
+  const potential = new Float32Array(len);
 
   const seedNum = hashString(`${cfg.seed}-${cfg.targetWidth}-${cfg.targetHeight}-${phase}`);
-  const rng = mulberry32(seedNum ^ 0x6c8e9);
-
-  const quality = QUALITY[cfg.quality] || QUALITY.high;
+  const rng = mulberry32(seedNum ^ 0x9abcde);
   const post = (step, progress) => self.postMessage({ type: 'progress', step, progress });
 
-  const seaLevel = clamp(cfg.seaLevel ?? 64, 50, 110);
-  const minY = clamp(Number.isFinite(cfg.minY) ? cfg.minY : SURFACE_MIN_Y, SURFACE_MIN_Y, SURFACE_MAX_Y - 20);
-  const maxY = clamp(Number.isFinite(cfg.maxY) ? cfg.maxY : SURFACE_MAX_Y, minY + 40, SURFACE_MAX_Y);
-  const cleanupStrength = clamp(Number.isFinite(cfg.cleanupStrength) ? cfg.cleanupStrength : 0.5, 0, 1);
-  const riverDepth = clamp(Number.isFinite(cfg.riverDepth) ? cfg.riverDepth : 1, 0.3, 2.5);
+  const seaLevel = 64;
+  const minY = clamp(cfg.minY, SURFACE_MIN_Y, 240);
+  const maxY = clamp(cfg.maxY, minY + 40, SURFACE_MAX_Y);
 
-  const tectonicAngle = rng() * Math.PI;
-
-  // 1) Générer une masse terrestre
-  post('1/11 Masse terrestre', 0.05);
+  post('1/12 Masque terre potentiel', 0.05);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const i = idx(x, y, width);
-      landMask[i] = buildLandmass(x, y, width, height, cfg, seedNum);
+      potential[i] = createLandPotential(x, y, width, height, cfg, seedNum);
     }
   }
 
-  // 2) Générer les altitudes principales (macro/meso/micro)
-  post('2/11 Altitudes principales', 0.12);
+  post('2/12 Seuil adaptatif land coverage', 0.12);
+  const targetCoverage = clamp(cfg.landCoverage, 0.2, 0.75);
+  const firstMask = adaptiveLandMask(potential, targetCoverage);
+  const landMask = firstMask.mask;
+
+  post('3/12 Nettoyage masque terre/mer', 0.18);
+  const cleanupStats = cleanupMask(landMask, width, height);
+
+  let landCount = 0;
+  for (let i = 0; i < len; i += 1) landCount += landMask[i];
+  const realCoverage = landCount / len;
+  const coastDistance = distanceToCoast(landMask, width, height);
+
+  post('4/12 Base altitude Minecraft', 0.28);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const i = idx(x, y, width);
       const nx = x / width;
       const ny = y / height;
-      const lm = landMask[i];
+      const inland = clamp(coastDistance[i] / 26, 0, 1);
+      const macro = fbm(nx * 2.0, ny * 2.0, seedNum + 101, 5, 2.0, 0.52);
+      const meso = fbm(nx * 6.0, ny * 6.0, seedNum + 113, 4, 2.1, 0.48);
 
-      const macro = fbm(nx * 1.5 * cfg.landmassScale, ny * 1.5 * cfg.landmassScale, seedNum + 201, qOct(5, cfg.quality), 2.02, 0.52);
-      const meso = fbm(nx * 5.3, ny * 5.3, seedNum + 219, qOct(4, cfg.quality), 2.18, 0.49);
-      const micro = fbm(nx * 14.5, ny * 14.5, seedNum + 237, qOct(3, cfg.quality), 2.3, 0.45);
-
-      const hierarchy = macro * 0.56 + meso * 0.32 + micro * 0.12 * (0.4 + cfg.terrainVariation * 0.9) * quality.detailMul;
-      const marineFloor = lerp(25, 56, macro * 0.8 + meso * 0.2);
-      const landCandidate = applyMinecraftBands(hierarchy, seaLevel);
-      const shoreBlend = smoothstep(clamp((lm - 0.28) / 0.48, 0, 1));
-      map[i] = lerp(marineFloor, landCandidate, shoreBlend);
-    }
-  }
-
-  // 3) Créer les couches Minecraft
-  post('3/11 Couches altitudinales Minecraft', 0.2);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const i = idx(x, y, width);
-      const h = map[i];
-      const coastNoise = fbm(x / width * 9.5, y / height * 9.5, seedNum + 301, qOct(3, cfg.quality), 2.2, 0.5);
-
-      if (h < 45) map[i] = lerp(25, 45, clamp((h - 25) / 20, 0, 1));
-      else if (h < 58) map[i] = lerp(45, 58, clamp((h - 45) / 13, 0, 1));
-      else if (h < 70) map[i] = lerp(62, 68, clamp((h - 58) / 12, 0, 1));
-      else if (h < 92) map[i] = lerp(70, 90, clamp((h - 70) / 22, 0, 1));
-      else if (h < 126) map[i] = lerp(90, 120, clamp((h - 92) / 34, 0, 1));
-      else if (h < 155) map[i] = lerp(120, 150, clamp((h - 126) / 29, 0, 1));
-      else if (h < 226) map[i] = lerp(150, 220, clamp((h - 155) / 71, 0, 1));
-      else map[i] = lerp(220, maxY, clamp((h - 226) / Math.max(1, maxY - 226), 0, 1));
-
-      if (landMask[i] > 0.4 && map[i] >= seaLevel - 2 && map[i] <= seaLevel + 7) {
-        map[i] += (coastNoise - 0.5) * 2.3;
+      if (landMask[i]) {
+        const plainsBias = cfg.playableFlatBias;
+        const baseLowLand = lerp(72, 95, macro * 0.65 + meso * 0.35);
+        const relief = (1 - plainsBias) * cfg.reliefInterior;
+        const interiorLift = inland * inland * relief * 65;
+        map[i] = baseLowLand + interiorLift;
+      } else {
+        const shelf = clamp(coastDistance[i] / cfg.shelfWidthCells, 0, 1);
+        const abyssNoise = fbm(nx * 4.3, ny * 4.3, seedNum + 127, 4, 2.2, 0.5);
+        const baseOcean = lerp(62, cfg.oceanFloorMin, smoothstep(shelf));
+        map[i] = baseOcean - abyssNoise * cfg.oceanDepthNoise;
       }
     }
   }
 
-  // 4) Ajouter montagnes
-  post('4/11 Chaînes montagneuses', 0.3);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const i = idx(x, y, width);
-      const lm = landMask[i];
-      if (lm < 0.46) continue;
-
-      const nx = x / width;
-      const ny = y / height;
-      const tectonic = normalizedGradient(x, y, width, height, tectonicAngle);
-      const tectonicBand = ridged(nx * 2.1 + Math.cos(tectonicAngle) * 0.7, ny * 2.1 + Math.sin(tectonicAngle) * 0.7, seedNum + 401, 1.65, qOct(5, cfg.quality));
-      const massif = fbm(nx * (2.8 / cfg.massifSize), ny * (2.8 / cfg.massifSize), seedNum + 421, qOct(4, cfg.quality), 2.08, 0.53);
-      const ridgeA = ridged(nx * 5.5, ny * 5.5, seedNum + 437, cfg.ridgeSharpness, qOct(4, cfg.quality));
-      const ridgeB = ridged(nx * 9.7, ny * 9.7, seedNum + 449, cfg.ridgeSharpness * 0.8, qOct(3, cfg.quality));
-
-      const mMask = clamp((tectonicBand * 0.48 + massif * 0.36 + tectonic * 0.16) * lm, 0, 1);
-      mountainMask[i] = mMask;
-
-      let uplift = (ridgeA * 46 + ridgeB * 22) * cfg.mountainIntensity * mMask;
-      if (mMask > 0.64) uplift += cfg.peakAmount * 26 * Math.pow(mMask, 1.5);
-      uplift *= 0.84 + cfg.alpineEffect * 0.42;
-
-      map[i] = clamp(map[i] + uplift, minY, maxY);
+  post('5/12 Côtes / plages / falaises', 0.38);
+  for (let i = 0; i < len; i += 1) {
+    const d = coastDistance[i];
+    if (!landMask[i]) {
+      if (d < cfg.shelfWidthCells) {
+        map[i] = Math.max(map[i], lerp(63, 56, d / Math.max(1, cfg.shelfWidthCells)));
+      }
+    } else {
+      if (d <= cfg.beachWidthCells) {
+        map[i] = lerp(64, 69, d / Math.max(1, cfg.beachWidthCells));
+      } else if (cfg.coastCliffBoost > 0 && d <= cfg.beachWidthCells + 2) {
+        map[i] += cfg.coastCliffBoost;
+      }
     }
   }
 
-  // 5) Ajouter vallées (drainage + convergence)
-  post('5/11 Vallées cohérentes', 0.4);
+  post('6/12 Montagnes intérieures', 0.48);
+  const mountainMask = new Float32Array(len);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const i = idx(x, y, width);
+      if (!landMask[i]) continue;
+      const inland = clamp(coastDistance[i] / 34, 0, 1);
+      const ridge = ridged(x / width * 5.3, y / height * 5.3, seedNum + 151, cfg.ridgeSharpness);
+      const massif = fbm(x / width * 2.2, y / height * 2.2, seedNum + 163, 4, 2.0, 0.54);
+      const m = smoothstep(clamp((ridge * 0.65 + massif * 0.35) * inland - (1 - cfg.mountainAmount) * 0.35, 0, 1));
+      mountainMask[i] = m;
+      map[i] += m * cfg.mountainHeight;
+    }
+  }
+
+  post('7/12 Zones plates jouables', 0.58);
   for (let y = 1; y < height - 1; y += 1) {
     for (let x = 1; x < width - 1; x += 1) {
       const i = idx(x, y, width);
-      if (landMask[i] < 0.45 || map[i] < seaLevel + 2) continue;
-
-      const h = map[i];
-      const l = map[idx(x - 1, y, width)];
-      const r = map[idx(x + 1, y, width)];
-      const u = map[idx(x, y - 1, width)];
-      const d = map[idx(x, y + 1, width)];
-      const avg = (l + r + u + d) / 4;
-      const convergence = clamp((avg - h + 6) / 14, 0, 1);
-      const valleySignal = 1 - ridged(x / width * 3.6, y / height * 3.6, seedNum + 503, 1.4, qOct(4, cfg.quality));
-
-      const carve = convergence * valleySignal * cfg.valleyStrength * (map[i] > 135 ? 14 : 8);
-      map[i] = clamp(map[i] - carve, minY, maxY);
+      if (!landMask[i] || mountainMask[i] > 0.52) continue;
+      const plainsSignal = fbm(x / width * 3.4, y / height * 3.4, seedNum + 181, 3, 2.2, 0.5);
+      if (plainsSignal > 0.58) {
+        const avg = (map[idx(x - 1, y, width)] + map[idx(x + 1, y, width)] + map[idx(x, y - 1, width)] + map[idx(x, y + 1, width)]) / 4;
+        map[i] = lerp(map[i], Math.round(avg / 2) * 2, cfg.playableFlatBias * 0.75);
+      }
     }
   }
 
-  // 6) Ajouter rivières
-  post('6/11 Rivières descendantes', 0.5);
-  const sources = Math.floor(width * height * (0.000015 + cfg.riverDensity * 0.00008) * quality.riverStepsMul);
-  const maxSteps = Math.floor((width + height) * 0.7 * quality.riverStepsMul);
-
+  post('8/12 Rivières et vallées', 0.7);
+  let riversCreated = 0;
+  const sources = Math.floor(len * cfg.riverAmountDensity);
   for (let s = 0; s < sources; s += 1) {
     let x = Math.floor(rng() * (width - 2)) + 1;
     let y = Math.floor(rng() * (height - 2)) + 1;
-    let ci = idx(x, y, width);
-    if (map[ci] < 120 || landMask[ci] < 0.5 || mountainMask[ci] < 0.35) continue;
+    let i = idx(x, y, width);
+    if (!landMask[i] || map[i] < 105 || mountainMask[i] < 0.3) continue;
 
-    let lastHeight = map[ci] + 0.001;
-    for (let step = 0; step < maxSteps; step += 1) {
-      ci = idx(x, y, width);
-      const current = map[ci];
-      if (current >= lastHeight + 0.001) break;
-      lastHeight = current;
+    riversCreated += 1;
+    const steps = Math.floor((width + height) * 0.42);
+    for (let step = 0; step < steps; step += 1) {
+      i = idx(x, y, width);
+      map[i] -= cfg.riverDepth;
 
-      let nx = x;
-      let ny = y;
-      let nh = current;
+      for (let oy = -cfg.riverWidth; oy <= cfg.riverWidth; oy += 1) {
+        for (let ox = -cfg.riverWidth; ox <= cfg.riverWidth; ox += 1) {
+          const xx = x + ox;
+          const yy = y + oy;
+          if (xx < 1 || yy < 1 || xx >= width - 1 || yy >= height - 1) continue;
+          map[idx(xx, yy, width)] -= cfg.riverDepth * 0.3;
+        }
+      }
+
+      let nextX = x;
+      let nextY = y;
+      let low = map[i];
       for (let oy = -1; oy <= 1; oy += 1) {
         for (let ox = -1; ox <= 1; ox += 1) {
-          if (ox === 0 && oy === 0) continue;
-          const ti = idx(x + ox, y + oy, width);
-          const th = map[ti];
-          if (th < nh) {
-            nh = th;
-            nx = x + ox;
-            ny = y + oy;
+          if (!ox && !oy) continue;
+          const xx = x + ox;
+          const yy = y + oy;
+          const h = map[idx(xx, yy, width)];
+          if (h < low) {
+            low = h;
+            nextX = xx;
+            nextY = yy;
           }
         }
       }
-
-      if (nx === x && ny === y) {
-        map[ci] -= 0.5;
-        break;
-      }
-
-      const channelDepth = riverDepth * (0.7 + step / Math.max(1, maxSteps) * 1.8);
-      map[ci] -= channelDepth;
-      flow[ci] += 1;
-
-      for (let oy = -1; oy <= 1; oy += 1) {
-        for (let ox = -1; ox <= 1; ox += 1) {
-          const ni = idx(x + ox, y + oy, width);
-          map[ni] -= channelDepth * 0.11;
-        }
-      }
-
-      x = nx;
-      y = ny;
-      if (x <= 1 || y <= 1 || x >= width - 2 || y >= height - 2) break;
-      if (map[idx(x, y, width)] <= seaLevel + 0.4) {
-        map[idx(x, y, width)] = Math.min(map[idx(x, y, width)], seaLevel);
-        break;
-      }
+      if (nextX === x && nextY === y) break;
+      x = nextX;
+      y = nextY;
+      if (map[idx(x, y, width)] <= seaLevel + 0.2 || !landMask[idx(x, y, width)]) break;
     }
   }
 
-  // 7) Ajouter érosion (hydraulique + thermique + pente)
-  post('7/11 Érosion multi-pass', 0.63);
-  const erosionPasses = Math.max(1, Math.round(quality.erosionPasses * (0.5 + cfg.erosionStrength * 1.4)));
-  const delta = new Float32Array(len);
-  const sediment = new Float32Array(len);
-  const talus = 1.2 + cfg.erosionStrength * 2.8;
-
-  for (let pass = 0; pass < erosionPasses; pass += 1) {
-    delta.fill(0);
-    sediment.fill(0);
-
-    for (let y = 1; y < height - 1; y += 1) {
-      for (let x = 1; x < width - 1; x += 1) {
-        const i = idx(x, y, width);
-        const h = map[i];
-
-        const nIds = [idx(x - 1, y, width), idx(x + 1, y, width), idx(x, y - 1, width), idx(x, y + 1, width)];
-        let lowest = i;
-        let lowH = h;
-
-        for (let n = 0; n < 4; n += 1) {
-          const ni = nIds[n];
-          if (map[ni] < lowH) {
-            lowH = map[ni];
-            lowest = ni;
-          }
-
-          const diff = h - map[ni];
-          if (diff > talus) {
-            const moved = (diff - talus) * 0.18;
-            delta[i] -= moved;
-            delta[ni] += moved;
-          }
-        }
-
-        if (lowest !== i) {
-          const hydraulic = clamp((h - lowH) / 12, 0, 1) * (0.26 + cfg.erosionStrength * 0.3);
-          delta[i] -= hydraulic;
-          delta[lowest] += hydraulic * 0.64;
-          sediment[i] += hydraulic * 0.36;
-        }
-      }
-    }
-
-    for (let i = 0; i < len; i += 1) {
-      map[i] = clamp(map[i] + delta[i] - sediment[i] * 0.18, minY, maxY);
-    }
-  }
-
-  // 8) Ajouter détails locaux
-  post('8/11 Détails locaux', 0.73);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const i = idx(x, y, width);
-      const lm = landMask[i];
-      if (lm < 0.42 || map[i] < seaLevel + 2) continue;
-
-      const nx = x / width;
-      const ny = y / height;
-      const rocky = ridged(nx * 16.5, ny * 16.5, seedNum + 611, 1.55, qOct(3, cfg.quality));
-      const hummock = fbm(nx * 12.2, ny * 12.2, seedNum + 623, qOct(3, cfg.quality), 2.28, 0.44);
-      const localPlateau = 1 - ridged(nx * 7.8, ny * 7.8, seedNum + 641, 1.35, qOct(3, cfg.quality));
-      const modulation = smoothstep(clamp((mountainMask[i] - 0.22) / 0.58, 0, 1));
-
-      const localDetail = (rocky - 0.5) * 5.5 * modulation + (hummock - 0.5) * 3.1 * (1 - modulation);
-      const plateauBreak = (localPlateau - 0.45) * cfg.terrainSharpness * 1.4;
-      map[i] = clamp(map[i] + localDetail + plateauBreak, minY, maxY);
-    }
-  }
-
-  // 9) Nettoyer (anti artefacts + worldpainter safe)
-  post('9/11 Nettoyage WorldPainter', 0.82);
-  const cleanupPasses = Math.max(1, Math.round(quality.cleanupPasses * (0.55 + cleanupStrength * 1.8)));
+  post('9/12 Nettoyage anti-artefacts', 0.82);
   const scratch = new Float32Array(len);
-
-  for (let pass = 0; pass < cleanupPasses; pass += 1) {
+  for (let pass = 0; pass < 2; pass += 1) {
     scratch.set(map);
     for (let y = 1; y < height - 1; y += 1) {
       for (let x = 1; x < width - 1; x += 1) {
         const i = idx(x, y, width);
-        const c = map[i];
-
-        const l = map[idx(x - 1, y, width)];
-        const r = map[idx(x + 1, y, width)];
-        const u = map[idx(x, y - 1, width)];
-        const d = map[idx(x, y + 1, width)];
-        const avg = (l + r + u + d) / 4;
-        const maxN = Math.max(l, r, u, d);
-        const minN = Math.min(l, r, u, d);
-
-        if (c > maxN + 16) scratch[i] = maxN + 7;
-        else if (c < minN - 14) scratch[i] = minN - 5;
-        else if (Math.abs(c - avg) > 11) scratch[i] = lerp(c, avg, 0.42);
-
-        if (landMask[i] > 0.35 && scratch[i] < seaLevel - 3) scratch[i] = seaLevel - 2;
-
-        if (scratch[i] >= seaLevel - 2 && scratch[i] <= seaLevel + 4) {
-          scratch[i] = Math.round(scratch[i]);
-        }
+        const avg = (map[idx(x - 1, y, width)] + map[idx(x + 1, y, width)] + map[idx(x, y - 1, width)] + map[idx(x, y + 1, width)]) / 4;
+        if (Math.abs(map[i] - avg) > 18) scratch[i] = lerp(map[i], avg, 0.4);
       }
     }
     map.set(scratch);
   }
 
-  // 10) Quantifier (entiers Minecraft)
-  post('10/11 Quantification Minecraft', 0.91);
-  const plateauStep = clamp(11 - cfg.plateauAmount * 7, 3, 11);
+  post('10/12 Quantification Minecraft', 0.9);
+  let minGenerated = 999;
+  let maxGenerated = -999;
   for (let i = 0; i < len; i += 1) {
-    let h = clamp(map[i], minY, maxY);
-
-    if (h > seaLevel + 12) {
-      const terracingBlend = cfg.plateauAmount * 0.24;
-      const terrace = Math.round(h / plateauStep) * plateauStep;
-      h = lerp(h, terrace, terracingBlend);
-    }
-
-    heights[i] = clamp(Math.round(h), minY, maxY);
+    const h = clamp(Math.round(map[i]), minY, maxY);
+    heights[i] = h;
+    minGenerated = Math.min(minGenerated, h);
+    maxGenerated = Math.max(maxGenerated, h);
   }
 
-  // 11) Convertir en grayscale + slope
-  post('11/11 Grayscale export', 0.97);
+  post('11/12 Grayscale WorldPainter', 0.96);
   const image = new Uint8ClampedArray(len * 4);
-
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const i = idx(x, y, width);
       const c = heights[i];
-
       const l = heights[idx(Math.max(0, x - 1), y, width)];
       const r = heights[idx(Math.min(width - 1, x + 1), y, width)];
       const u = heights[idx(x, Math.max(0, y - 1), width)];
       const d = heights[idx(x, Math.min(height - 1, y + 1), width)];
-      slope[i] = Math.abs(r - l) + Math.abs(d - u) + Math.abs(c - (l + r + u + d) / 4);
+      slope[i] = Math.abs(r - l) + Math.abs(d - u);
 
-      const t = clamp((c - MC_MIN_Y) / Math.max(1, MC_MAX_Y - MC_MIN_Y), 0, 1);
-      const g = Math.round(t * 255);
+      const g = Math.round(clamp((c - MC_MIN_Y) / (MC_MAX_Y - MC_MIN_Y), 0, 1) * 255);
       const o = i * 4;
       image[o] = g;
       image[o + 1] = g;
@@ -492,22 +367,32 @@ function generate(payload) {
     }
   }
 
-  post('Terminé', 1);
-  self.postMessage({
-    type: 'done',
-    phase,
-    width,
-    height,
-    heights,
-    slope,
-    image,
-    config: cfg
-  }, [heights.buffer, slope.buffer, image.buffer]);
+  const islandsApprox = Math.max(1, Math.round(cfg.secondaryIslands + 1));
+
+  cfg.generationStats = {
+    targetLandPct: targetCoverage * 100,
+    realLandPct: realCoverage * 100,
+    realOceanPct: 100 - realCoverage * 100,
+    removedMicroIslands: cleanupStats.removedMicroIslands,
+    removedWaterHoles: cleanupStats.removedWaterHoles,
+    minY: minGenerated,
+    maxY: maxGenerated,
+    seaLevel,
+    islandCount: islandsApprox,
+    riverCount: riversCreated,
+    worldPainterSafe: true,
+    worldPainterTips: {
+      lowMapping: `0 → Y${minGenerated}`,
+      waterLevel: 'Y64',
+      highMapping: `255 → Y${maxGenerated}`,
+      buildLimit: '-64 / 319'
+    }
+  };
+
+  post('12/12 Terminé', 1);
+  self.postMessage({ type: 'done', phase, width, height, heights, slope, image, config: cfg }, [heights.buffer, slope.buffer, image.buffer]);
 }
 
 self.onmessage = (event) => {
-  const data = event.data;
-  if (data.type === 'generate') {
-    generate(data);
-  }
+  if (event.data.type === 'generate') generate(event.data);
 };

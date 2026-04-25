@@ -10,81 +10,93 @@
     <div class="shell">
       <aside class="panel left">
         <h1>Heightmap Builder</h1>
-        <p class="subtitle">Créez rapidement une map propre. Mode simple par défaut, réglages experts en option.</p>
+        <p class="subtitle">Mode simple orienté contrôle + réalisme + export WorldPainter safe.</p>
 
         <section class="card">
           <h2>Mode Simple</h2>
 
-          <label>
-            Taille de la map
+          <label>Taille de la map
             <select id="map-size">
               <option value="512">512 x 512</option>
               <option value="1024" selected>1024 x 1024 (recommandé)</option>
               <option value="2048">2048 x 2048</option>
               <option value="4096">4096 x 4096</option>
             </select>
-            <span class="hint">4096 : très lourd, recommandé uniquement pour export final.</span>
           </label>
 
-          <label>
-            Type de monde
+          <label>Type de monde
             <select id="world-type"></select>
-            <span class="hint">Preset intelligent appliqué automatiquement.</span>
-          </label>
-
-          <label>
-            Style de relief
-            <select id="relief-style">
-              <option value="flat">Plat</option>
-              <option value="soft">Doux</option>
-              <option value="balanced" selected>Équilibré</option>
-              <option value="mountainous">Montagneux</option>
-              <option value="extreme">Extrême</option>
-            </select>
-            <span class="hint">Définit l'intensité des collines, montagnes et vallées.</span>
           </label>
 
           <div class="row two">
-            <label>
-              Quantité d'eau
-              <select id="water-amount">
-                <option value="low">Faible</option>
-                <option value="medium" selected>Moyenne</option>
-                <option value="high">Élevée</option>
+            <label>% de terre (Land Coverage)
+              <select id="land-coverage">
+                <option value="very-low">Très faible (20%)</option>
+                <option value="low">Faible (30%)</option>
+                <option value="medium" selected>Moyen (45%)</option>
+                <option value="high">Élevé (60%)</option>
+                <option value="very-high">Très élevé (75%)</option>
               </select>
             </label>
-            <label>
-              Côtes
-              <select id="coast-style">
-                <option value="soft">Douces</option>
-                <option value="mixed" selected>Mixtes</option>
-                <option value="rocky">Rocheuses</option>
+            <label>Marge océanique
+              <select id="ocean-border">
+                <option value="near">Très proche (5%)</option>
+                <option value="standard" selected>Standard (12%)</option>
+                <option value="wide">Large (20%)</option>
+                <option value="very-wide">Très large (28%)</option>
+                <option value="immense">Immense (35%)</option>
               </select>
             </label>
           </div>
 
-          <label>
-            Rivières
-            <select id="rivers-level">
-              <option value="none">Aucune</option>
-              <option value="few" selected>Quelques-unes</option>
-              <option value="many">Beaucoup</option>
-            </select>
-          </label>
+          <div class="row two">
+            <label>Relief intérieur
+              <select id="relief-style">
+                <option value="very-flat">Très plat</option>
+                <option value="playable" selected>Jouable</option>
+                <option value="varied">Varié</option>
+                <option value="mountainous">Montagneux</option>
+                <option value="extreme">Extrême</option>
+              </select>
+            </label>
+            <label>Profondeur océan
+              <select id="ocean-depth">
+                <option value="shallow">Peu profond</option>
+                <option value="medium" selected>Moyen</option>
+                <option value="deep">Profond</option>
+              </select>
+            </label>
+          </div>
 
-          <label>
-            Qualité
+          <div class="row two">
+            <label>Côtes
+              <select id="coast-style">
+                <option value="soft">Douces</option>
+                <option value="mixed" selected>Mixtes</option>
+                <option value="rocky">Rocheuses</option>
+                <option value="cliff">Falaises</option>
+              </select>
+            </label>
+            <label>Rivières
+              <select id="rivers-level">
+                <option value="none">Aucune</option>
+                <option value="few" selected>Quelques-unes</option>
+                <option value="medium">Moyen</option>
+                <option value="many">Beaucoup</option>
+              </select>
+            </label>
+          </div>
+
+          <label>Qualité
             <select id="quality-mode">
               <option value="fast">Rapide</option>
               <option value="balanced" selected>Équilibrée</option>
               <option value="high">Haute qualité</option>
             </select>
-            <span class="hint">Haute qualité : plus lent, mais meilleur relief.</span>
           </label>
 
           <div class="seed-row">
-            <label>
-              Seed
+            <label>Seed
               <input id="seed" type="text" value="minecraft-surface" />
             </label>
             <button id="random-seed" class="secondary">Seed aléatoire</button>
@@ -108,12 +120,7 @@
 
         <details class="card advanced" id="advanced-panel">
           <summary>Paramètres avancés</summary>
-          <p class="hint">Mode expert : réglages détaillés.</p>
-
-          <label>Sea level (Y)
-            <input id="sea-level" type="range" min="63" max="90" step="1" value="64" />
-            <span id="sea-level-val"></span>
-          </label>
+          <p class="hint">Réglages techniques (montagnes/rivières/nettoyage).</p>
 
           <div class="row two">
             <label>Min Y
@@ -124,37 +131,18 @@
             </label>
           </div>
 
-          <label>Erosion strength
-            <input id="erosion-strength" type="range" min="0" max="1" step="0.01" value="0.48" />
-            <span id="erosion-strength-val"></span>
-          </label>
-
           <label>Mountain scale
             <input id="mountain-scale" type="range" min="0.6" max="2.2" step="0.01" value="1.1" />
-            <span id="mountain-scale-val"></span>
           </label>
 
-          <label>River depth
-            <input id="river-depth" type="range" min="0.3" max="2.5" step="0.01" value="1" />
-            <span id="river-depth-val"></span>
-          </label>
-
-          <label>Coastline complexity
-            <input id="coastline-complexity" type="range" min="0" max="1" step="0.01" value="0.68" />
-            <span id="coastline-complexity-val"></span>
-          </label>
-
-          <label>Quantization
-            <input id="quantization" type="range" min="0" max="1" step="0.01" value="0.28" />
-            <span id="quantization-val"></span>
+          <label>River depth bonus
+            <input id="river-depth" type="range" min="0" max="2" step="0.01" value="0.2" />
           </label>
 
           <label>Cleanup strength
             <input id="cleanup-strength" type="range" min="0" max="1" step="0.01" value="0.5" />
-            <span id="cleanup-strength-val"></span>
           </label>
         </details>
-
       </aside>
 
       <main class="center">
@@ -183,14 +171,18 @@
         </section>
 
         <section class="card">
-          <h2>Statistiques</h2>
+          <h2>Validation</h2>
           <ul id="stats"></ul>
+        </section>
+
+        <section class="card">
+          <h2>WorldPainter Safe</h2>
+          <ul id="wp-compatibility"></ul>
         </section>
 
         <section class="card">
           <h2>Distribution altitudes</h2>
           <canvas id="histogram" width="320" height="140"></canvas>
-          <p class="hint">Preview rapide = basse résolution. L'export PNG lance la génération finale.</p>
         </section>
       </aside>
     </div>

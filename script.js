@@ -2,11 +2,14 @@ const $ = (id) => document.getElementById(id);
 
 const MC_MIN_Y = -64;
 const MC_MAX_Y = 320;
+
 const DEFAULT_SIMPLE = {
   mapSize: '1024',
   worldType: 'ile-pokemon',
-  reliefStyle: 'balanced',
-  waterAmount: 'medium',
+  landCoverage: 'medium',
+  oceanBorder: 'standard',
+  reliefStyle: 'playable',
+  oceanDepth: 'medium',
   coastStyle: 'mixed',
   riversLevel: 'few',
   quality: 'balanced'
@@ -15,8 +18,10 @@ const DEFAULT_SIMPLE = {
 const ui = {
   mapSize: $('map-size'),
   worldType: $('world-type'),
+  landCoverage: $('land-coverage'),
+  oceanBorder: $('ocean-border'),
   reliefStyle: $('relief-style'),
-  waterAmount: $('water-amount'),
+  oceanDepth: $('ocean-depth'),
   coastStyle: $('coast-style'),
   riversLevel: $('rivers-level'),
   qualityMode: $('quality-mode'),
@@ -28,14 +33,10 @@ const ui = {
   quickPreviewBadge: $('quick-preview-badge'),
   impactNote: $('impact-note'),
 
-  seaLevel: $('sea-level'),
   minY: $('min-y'),
   maxY: $('max-y'),
-  erosionStrength: $('erosion-strength'),
   mountainScale: $('mountain-scale'),
   riverDepth: $('river-depth'),
-  coastlineComplexity: $('coastline-complexity'),
-  quantization: $('quantization'),
   cleanupStrength: $('cleanup-strength'),
 
   previewMode: $('preview-mode'),
@@ -49,83 +50,83 @@ const ui = {
   pipelineStep: $('pipeline-step'),
   stats: $('stats'),
   configSummary: $('config-summary'),
+  worldPainterCompatibility: $('wp-compatibility'),
   viewport: $('viewport')
 };
 
-const WORLD_PRESETS = {
-  'ile-pokemon': {
-    label: 'Région Pokémon',
-    description: 'Grande île lisible, zones plates exploitables, plages propres.',
-    advanced: { islandSize: 0.97, archipelagoAmount: 0.16, coastFragmentation: 0.28, landmassScale: 0.88, landmassDensity: 0.62, terrainVariation: 0.56, mountainIntensity: 0.58, ridgeSharpness: 1.35, alpineEffect: 0.42, peakAmount: 0.31, valleyStrength: 0.44, riverDensity: 0.38, coastErosion: 0.36, cliffAmount: 0.24, terrainSharpness: 1.1, layerContrast: 1.18, abyssFrequency: 0.12, shelfWidth: 0.58 }
-  },
-  'ile-realiste': {
-    label: 'Île réaliste',
-    description: 'Côtes irrégulières, relief naturel, vallées crédibles.',
-    advanced: { islandSize: 1, archipelagoAmount: 0.22, coastFragmentation: 0.41, landmassScale: 0.94, landmassDensity: 0.57, terrainVariation: 0.62, mountainIntensity: 0.68, ridgeSharpness: 1.58, alpineEffect: 0.52, peakAmount: 0.38, valleyStrength: 0.58, riverDensity: 0.45, coastErosion: 0.47, cliffAmount: 0.35, terrainSharpness: 1.22, layerContrast: 1.22, abyssFrequency: 0.17, shelfWidth: 0.55 }
-  },
-  'archipel': {
-    label: 'Archipel',
-    description: 'Plusieurs îles, eau dominante, relief léger à moyen.',
-    advanced: { islandSize: 1.08, archipelagoAmount: 0.78, coastFragmentation: 0.65, landmassScale: 1.05, landmassDensity: 0.42, terrainVariation: 0.52, mountainIntensity: 0.49, ridgeSharpness: 1.22, alpineEffect: 0.35, peakAmount: 0.23, valleyStrength: 0.36, riverDensity: 0.27, coastErosion: 0.52, cliffAmount: 0.22, terrainSharpness: 1.0, layerContrast: 1.11, abyssFrequency: 0.22, shelfWidth: 0.7 }
-  },
-  'continent': {
-    label: 'Continent',
-    description: 'Grande masse terrestre, chaînes de montagnes, longues rivières.',
-    advanced: { islandSize: 1.2, archipelagoAmount: 0.12, coastFragmentation: 0.38, landmassScale: 0.72, landmassDensity: 0.71, terrainVariation: 0.65, mountainIntensity: 0.73, ridgeSharpness: 1.82, alpineEffect: 0.54, peakAmount: 0.44, valleyStrength: 0.62, riverDensity: 0.56, coastErosion: 0.41, cliffAmount: 0.3, terrainSharpness: 1.25, layerContrast: 1.2, abyssFrequency: 0.1, shelfWidth: 0.5 }
-  },
-  'survie-equilibree': {
-    label: 'Survie équilibrée',
-    description: 'Plaines nombreuses, collines modérées, terrain jouable.',
-    advanced: { islandSize: 1.04, archipelagoAmount: 0.2, coastFragmentation: 0.33, landmassScale: 0.9, landmassDensity: 0.63, terrainVariation: 0.54, mountainIntensity: 0.52, ridgeSharpness: 1.33, alpineEffect: 0.39, peakAmount: 0.28, valleyStrength: 0.45, riverDensity: 0.41, coastErosion: 0.42, cliffAmount: 0.21, terrainSharpness: 1.06, layerContrast: 1.15, abyssFrequency: 0.12, shelfWidth: 0.6 }
-  },
-  'fantasy-dramatique': {
-    label: 'Fantasy dramatique',
-    description: 'Falaises, montagnes marquées, relief spectaculaire.',
-    advanced: { islandSize: 0.92, archipelagoAmount: 0.46, coastFragmentation: 0.57, landmassScale: 0.96, landmassDensity: 0.54, terrainVariation: 0.78, mountainIntensity: 0.92, ridgeSharpness: 2.2, alpineEffect: 0.82, peakAmount: 0.68, valleyStrength: 0.72, riverDensity: 0.34, coastErosion: 0.5, cliffAmount: 0.63, terrainSharpness: 1.52, layerContrast: 1.32, abyssFrequency: 0.2, shelfWidth: 0.48 }
-  },
-  'monde-montagneux': {
-    label: 'Monde montagneux',
-    description: 'Montagnes plus présentes avec vallées creusées.',
-    advanced: { islandSize: 1.05, archipelagoAmount: 0.2, coastFragmentation: 0.35, landmassScale: 0.88, landmassDensity: 0.6, terrainVariation: 0.71, mountainIntensity: 0.84, ridgeSharpness: 2.0, alpineEffect: 0.72, peakAmount: 0.58, valleyStrength: 0.64, riverDensity: 0.4, coastErosion: 0.4, cliffAmount: 0.5, terrainSharpness: 1.42, layerContrast: 1.28, abyssFrequency: 0.14, shelfWidth: 0.52 }
-  }
+const LAND_COVERAGE = {
+  "very-low": 0.2,
+  low: 0.3,
+  medium: 0.45,
+  high: 0.6,
+  "very-high": 0.75
+};
+
+const OCEAN_BORDER = {
+  near: 0.05,
+  standard: 0.12,
+  wide: 0.2,
+  "very-wide": 0.28,
+  immense: 0.35
 };
 
 const RELIEF_PROFILE = {
-  flat: { mountainIntensity: 0.62, ridgeSharpness: 0.8, terrainVariation: 0.55, valleyStrength: 0.7 },
-  soft: { mountainIntensity: 0.8, ridgeSharpness: 0.92, terrainVariation: 0.8, valleyStrength: 0.88 },
-  balanced: { mountainIntensity: 1, ridgeSharpness: 1, terrainVariation: 1, valleyStrength: 1 },
-  mountainous: { mountainIntensity: 1.2, ridgeSharpness: 1.2, terrainVariation: 1.2, valleyStrength: 1.08 },
-  extreme: { mountainIntensity: 1.42, ridgeSharpness: 1.4, terrainVariation: 1.35, valleyStrength: 1.2 }
+  "very-flat": { reliefInterior: 0.35, mountainAmount: 0.25, mountainHeight: 38, playableFlatBias: 0.88 },
+  playable: { reliefInterior: 0.55, mountainAmount: 0.42, mountainHeight: 62, playableFlatBias: 0.72 },
+  varied: { reliefInterior: 0.72, mountainAmount: 0.55, mountainHeight: 84, playableFlatBias: 0.58 },
+  mountainous: { reliefInterior: 0.86, mountainAmount: 0.72, mountainHeight: 104, playableFlatBias: 0.42 },
+  extreme: { reliefInterior: 1.0, mountainAmount: 0.9, mountainHeight: 132, playableFlatBias: 0.25 }
 };
 
-const WATER_PROFILE = {
-  low: { seaLevelDelta: -3, abyssFrequencyMul: 0.75, shelfWidthMul: 0.85, landmassDensityMul: 1.08 },
-  medium: { seaLevelDelta: 0, abyssFrequencyMul: 1, shelfWidthMul: 1, landmassDensityMul: 1 },
-  high: { seaLevelDelta: 3, abyssFrequencyMul: 1.25, shelfWidthMul: 1.2, landmassDensityMul: 0.9 }
+const OCEAN_DEPTH_PROFILE = {
+  shallow: { oceanFloorMin: 44, oceanDepthNoise: 8, shelfWidthCells: 10 },
+  medium: { oceanFloorMin: 35, oceanDepthNoise: 12, shelfWidthCells: 15 },
+  deep: { oceanFloorMin: 25, oceanDepthNoise: 17, shelfWidthCells: 20 }
 };
 
 const COAST_PROFILE = {
-  soft: { coastFragmentationMul: 0.72, cliffAmountMul: 0.55, coastErosionMul: 1.2, coastlineComplexityMul: 0.82 },
-  mixed: { coastFragmentationMul: 1, cliffAmountMul: 1, coastErosionMul: 1, coastlineComplexityMul: 1 },
-  rocky: { coastFragmentationMul: 1.14, cliffAmountMul: 1.45, coastErosionMul: 0.86, coastlineComplexityMul: 1.2 }
+  soft: { beachWidthCells: 5, coastCliffBoost: 0, coastComplexity: 0.08, coastSharpness: 0.2 },
+  mixed: { beachWidthCells: 3, coastCliffBoost: 2, coastComplexity: 0.14, coastSharpness: 0.5 },
+  rocky: { beachWidthCells: 2, coastCliffBoost: 4, coastComplexity: 0.2, coastSharpness: 0.85 },
+  cliff: { beachWidthCells: 1, coastCliffBoost: 7, coastComplexity: 0.22, coastSharpness: 1 }
 };
 
 const RIVER_PROFILE = {
-  none: { riverDensity: 0.02, riverDepth: 0.45 },
-  few: { riverDensity: 0.35, riverDepth: 0.9 },
-  many: { riverDensity: 0.62, riverDepth: 1.28 }
+  none: { riverAmountDensity: 0, riverWidth: 1, riverDepth: 0 },
+  few: { riverAmountDensity: 0.00002, riverWidth: 1, riverDepth: 1.5 },
+  medium: { riverAmountDensity: 0.00004, riverWidth: 2, riverDepth: 2.4 },
+  many: { riverAmountDensity: 0.00006, riverWidth: 3, riverDepth: 3.2 }
+};
+
+const WORLD_PRESETS = {
+  'ile-pokemon': { label: 'Île Pokémon', landCoverage: 'high', oceanBorder: 'standard', reliefStyle: 'varied', coastStyle: 'mixed', riversLevel: 'few', shape: 'compact', secondaryIslands: 2 },
+  'ile-realiste': { label: 'Île réaliste', landCoverage: 'medium', oceanBorder: 'wide', reliefStyle: 'varied', coastStyle: 'mixed', riversLevel: 'medium', shape: 'compact', secondaryIslands: 3 },
+  archipel: { label: 'Archipel', landCoverage: 'low', oceanBorder: 'standard', reliefStyle: 'playable', coastStyle: 'soft', riversLevel: 'few', shape: 'fragmented', secondaryIslands: 7 },
+  'grande-ile-rpg': { label: 'Grande île RPG', landCoverage: 'high', oceanBorder: 'near', reliefStyle: 'varied', coastStyle: 'mixed', riversLevel: 'medium', shape: 'elongated', secondaryIslands: 2 },
+  'continent-cotier': { label: 'Continent côtier', landCoverage: 'very-high', oceanBorder: 'near', reliefStyle: 'mountainous', coastStyle: 'rocky', riversLevel: 'many', shape: 'continental', secondaryIslands: 1 }
+};
+
+const SHAPE_PROFILE = {
+  compact: { mainIslandRadius: 0.58, shapeElongation: { x: 1, y: 1 }, domainWarp: 0.14 },
+  elongated: { mainIslandRadius: 0.6, shapeElongation: { x: 1.22, y: 0.84 }, domainWarp: 0.15 },
+  fragmented: { mainIslandRadius: 0.66, shapeElongation: { x: 1.06, y: 0.9 }, domainWarp: 0.22 },
+  archipelago: { mainIslandRadius: 0.7, shapeElongation: { x: 1.08, y: 0.92 }, domainWarp: 0.25 },
+  continental: { mainIslandRadius: 0.78, shapeElongation: { x: 1.28, y: 0.78 }, domainWarp: 0.1 }
 };
 
 const QUALITY_LABEL = { fast: 'Rapide', balanced: 'Équilibrée', high: 'Haute qualité' };
-
 const ctx = ui.canvas.getContext('2d', { willReadFrequently: true });
 const histCtx = ui.histogram.getContext('2d');
 const worker = new Worker('terrain-worker.js');
 let pendingJob = null;
-
 const state = { preview: null, full: null, config: null };
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+function minecraftYToGray(y, bitDepth = 8) {
+  const t = clamp((y - MC_MIN_Y) / Math.max(1, MC_MAX_Y - MC_MIN_Y), 0, 1);
+  return Math.round(t * (bitDepth === 16 ? 65535 : 255));
+}
 
 function setProgress(step, pct) {
   ui.pipelineStep.textContent = step;
@@ -137,87 +138,61 @@ function setManualGuidance(message = 'Modifiez vos paramètres puis cliquez sur 
   ui.progress.style.width = '0%';
 }
 
-function minecraftYToGray(y, bitDepth = 8) {
-  const t = clamp((y - MC_MIN_Y) / Math.max(1, MC_MAX_Y - MC_MIN_Y), 0, 1);
-  return Math.round(t * (bitDepth === 16 ? 65535 : 255));
-}
-
 function randomSeed() {
   const token = Math.random().toString(36).slice(2, 8);
   ui.seed.value = `map-${Date.now().toString(36)}-${token}`;
 }
 
 function fillWorldTypeOptions() {
-  const simpleWorldOrder = ['ile-realiste', 'archipel', 'continent', 'ile-pokemon', 'monde-montagneux', 'survie-equilibree'];
-  simpleWorldOrder.forEach((value) => {
-    const preset = WORLD_PRESETS[value];
+  ['ile-pokemon', 'ile-realiste', 'archipel', 'grande-ile-rpg', 'continent-cotier'].forEach((value) => {
     const opt = document.createElement('option');
     opt.value = value;
-    opt.textContent = preset.label;
+    opt.textContent = WORLD_PRESETS[value].label;
     ui.worldType.appendChild(opt);
   });
-  ui.worldType.value = DEFAULT_SIMPLE.worldType;
+}
+
+function applyPresetToSimple(id) {
+  const preset = WORLD_PRESETS[id];
+  if (!preset) return;
+  ui.landCoverage.value = preset.landCoverage;
+  ui.oceanBorder.value = preset.oceanBorder;
+  ui.reliefStyle.value = preset.reliefStyle;
+  ui.coastStyle.value = preset.coastStyle;
+  ui.riversLevel.value = preset.riversLevel;
 }
 
 function deriveConfigFromSimple() {
   const preset = WORLD_PRESETS[ui.worldType.value];
+  const landCoverage = LAND_COVERAGE[ui.landCoverage.value];
+  const oceanBorder = OCEAN_BORDER[ui.oceanBorder.value];
   const relief = RELIEF_PROFILE[ui.reliefStyle.value];
-  const water = WATER_PROFILE[ui.waterAmount.value];
+  const ocean = OCEAN_DEPTH_PROFILE[ui.oceanDepth.value];
   const coast = COAST_PROFILE[ui.coastStyle.value];
   const rivers = RIVER_PROFILE[ui.riversLevel.value];
+  const shape = SHAPE_PROFILE[preset.shape] || SHAPE_PROFILE.compact;
 
-  const base = { ...preset.advanced };
-  base.mountainIntensity = clamp(base.mountainIntensity * relief.mountainIntensity, 0.2, 1);
-  base.ridgeSharpness = clamp(base.ridgeSharpness * relief.ridgeSharpness, 0.5, 3);
-  base.terrainVariation = clamp(base.terrainVariation * relief.terrainVariation, 0, 1);
-  base.valleyStrength = clamp(base.valleyStrength * relief.valleyStrength, 0, 1);
-
-  base.seaLevel = clamp(64 + water.seaLevelDelta, 63, 90);
-  base.abyssFrequency = clamp(base.abyssFrequency * water.abyssFrequencyMul, 0, 1);
-  base.shelfWidth = clamp(base.shelfWidth * water.shelfWidthMul, 0, 1);
-  base.landmassDensity = clamp(base.landmassDensity * water.landmassDensityMul, 0, 1);
-
-  base.coastFragmentation = clamp(base.coastFragmentation * coast.coastFragmentationMul, 0, 1);
-  base.cliffAmount = clamp(base.cliffAmount * coast.cliffAmountMul, 0, 1);
-  base.coastErosion = clamp(base.coastErosion * coast.coastErosionMul, 0, 1);
-  base.coastlineComplexity = clamp(base.coastlineComplexity * coast.coastlineComplexityMul, 0, 1);
-
-  base.riverDensity = rivers.riverDensity;
-  base.riverDepth = rivers.riverDepth;
-
-  return base;
-}
-
-function syncAdvancedInputs(fromDerived) {
-  ui.seaLevel.value = Math.round(fromDerived.seaLevel);
-  ui.erosionStrength.value = fromDerived.erosionStrength;
-  ui.mountainScale.value = fromDerived.massifSize;
-  ui.riverDepth.value = fromDerived.riverDepth;
-  ui.coastlineComplexity.value = fromDerived.coastlineComplexity;
-  ui.quantization.value = fromDerived.plateauAmount;
-
-  bindAdvancedValue('sea-level', `Y${ui.seaLevel.value}`);
-  bindAdvancedValue('erosion-strength');
-  bindAdvancedValue('mountain-scale');
-  bindAdvancedValue('river-depth');
-  bindAdvancedValue('coastline-complexity');
-  bindAdvancedValue('quantization');
-  bindAdvancedValue('cleanup-strength');
-}
-
-function bindAdvancedValue(id, forcedText = null) {
-  const input = $(id);
-  const badge = $(`${id}-val`);
-  if (!badge || !input) return;
-  badge.textContent = forcedText || input.value;
+  return {
+    ...relief,
+    ...ocean,
+    ...coast,
+    ...rivers,
+    ...shape,
+    landCoverage,
+    oceanBorderNormalized: oceanBorder,
+    secondaryIslands: preset.secondaryIslands,
+    ridgeSharpness: 1.2 + Number(ui.mountainScale.value) * 1.2,
+    minY: clamp(Number(ui.minY.value) || 20, -64, 240),
+    maxY: clamp(Number(ui.maxY.value) || 260, 80, 320)
+  };
 }
 
 function collectSettings(scale = 1) {
   const targetSize = Number(ui.mapSize.value);
   const dim = Math.max(256, Math.floor(targetSize * scale));
-  const derived = deriveConfigFromSimple();
+  const d = deriveConfigFromSimple();
 
-  const cfg = {
+  return {
     width: dim,
     height: dim,
     targetWidth: targetSize,
@@ -225,44 +200,13 @@ function collectSettings(scale = 1) {
     seed: ui.seed.value.trim() || 'minecraft-surface',
     quality: ui.qualityMode.value,
     safeMode: true,
-
-    seaLevel: Number(ui.seaLevel.value) || derived.seaLevel,
-    minY: clamp(Number(ui.minY.value) || 20, -64, 250),
-    maxY: clamp(Number(ui.maxY.value) || 260, 80, 320),
-    erosionStrength: Number(ui.erosionStrength.value) || derived.erosionStrength,
-    massifSize: Number(ui.mountainScale.value) || derived.massifSize,
-    riverDepth: Number(ui.riverDepth.value) || derived.riverDepth,
-    coastlineComplexity: Number(ui.coastlineComplexity.value) || derived.coastlineComplexity,
-    plateauAmount: Number(ui.quantization.value) || derived.plateauAmount,
-    cleanupStrength: Number(ui.cleanupStrength.value) || 0.5,
-
-    islandSize: derived.islandSize,
-    landmassScale: derived.landmassScale,
-    landmassDensity: derived.landmassDensity,
-    coastFragmentation: derived.coastFragmentation,
-    islandAsymmetry: 0.52,
-    archipelagoAmount: derived.archipelagoAmount,
-    coastErosion: derived.coastErosion,
-    mountainIntensity: derived.mountainIntensity,
-    ridgeSharpness: derived.ridgeSharpness,
-    alpineEffect: derived.alpineEffect,
-    peakAmount: derived.peakAmount,
-    valleyStrength: derived.valleyStrength,
-    riverDensity: derived.riverDensity,
-    terrainSharpness: derived.terrainSharpness,
-    cliffAmount: derived.cliffAmount,
-    terrainVariation: derived.terrainVariation,
-    abyssFrequency: derived.abyssFrequency,
-    shelfWidth: derived.shelfWidth,
-    layerContrast: derived.layerContrast
+    ...d,
+    riverDepth: d.riverDepth + Number(ui.riverDepth.value)
   };
-
-  if (cfg.maxY <= cfg.minY) cfg.maxY = Math.min(320, cfg.minY + 40);
-  return cfg;
 }
 
 function previewScaleFor(size) {
-  if (size >= 4096) return 0.18;
+  if (size >= 4096) return 0.2;
   if (size >= 2048) return 0.33;
   if (size >= 1536) return 0.5;
   return 0.75;
@@ -293,26 +237,17 @@ worker.onmessage = (event) => {
       config: data.config
     };
 
-    if (data.phase === 'preview') {
-      state.preview = payload;
-      ui.canvas.width = payload.width;
-      ui.canvas.height = payload.height;
-      renderPreview();
-      renderStats(payload);
-      renderHistogram(payload);
-      renderSummary(payload.config);
-      setProgress(`Preview rapide prête (${payload.width}x${payload.height})`, 1);
-    } else {
-      state.full = payload;
-      state.preview = payload;
-      ui.canvas.width = payload.width;
-      ui.canvas.height = payload.height;
-      renderPreview();
-      renderStats(payload);
-      renderHistogram(payload);
-      renderSummary(payload.config);
-      setProgress(`Génération finale prête (${payload.width}x${payload.height})`, 1);
-    }
+    state.preview = payload;
+    if (data.phase === 'full') state.full = payload;
+
+    ui.canvas.width = payload.width;
+    ui.canvas.height = payload.height;
+    renderPreview();
+    renderStats(payload);
+    renderHistogram(payload);
+    renderSummary(payload.config);
+    renderWorldPainter(payload.config);
+    setProgress(`${data.phase === 'full' ? 'Génération finale' : 'Preview'} prête (${payload.width}x${payload.height})`, 1);
     pendingJob = null;
   }
 };
@@ -329,24 +264,24 @@ function renderPreview() {
     const out = new Uint8ClampedArray(src.image.length);
     for (let i = 0; i < src.heights.length; i += 1) {
       const h = src.heights[i];
-      const s = clamp(Math.round(src.slope[i] * 10), 0, 255);
+      const s = clamp(Math.round(src.slope[i] * 8), 0, 255);
       const o = i * 4;
       if (mode === 'hillshade') {
-        const shade = clamp(185 + (h - src.config.seaLevel) * 0.75 - src.slope[i] * 1.8, 8, 245);
+        const shade = clamp(180 + (h - 64) * 0.7 - src.slope[i] * 1.6, 12, 245);
         out[o] = shade; out[o + 1] = shade; out[o + 2] = shade;
       } else if (mode === 'slope-preview') {
-        out[o] = s; out[o + 1] = 80; out[o + 2] = 255 - s;
+        out[o] = s; out[o + 1] = 90; out[o + 2] = 255 - s;
       } else if (mode === 'contour-preview') {
         const g = minecraftYToGray(h, 8);
         const contour = h % 8 === 0 || h % 16 === 0;
         out[o] = contour ? 255 : g;
-        out[o + 1] = contour ? 245 : g;
-        out[o + 2] = contour ? 140 : g;
+        out[o + 1] = contour ? 230 : g;
+        out[o + 2] = contour ? 120 : g;
       } else {
         const t = clamp((h - src.config.minY) / Math.max(1, src.config.maxY - src.config.minY), 0, 1);
-        out[o] = clamp(Math.round(255 * (1.5 * t)), 0, 255);
+        out[o] = clamp(Math.round(255 * (1.6 * t)), 0, 255);
         out[o + 1] = clamp(Math.round(255 * (1.4 - Math.abs(t - 0.5) * 2)), 0, 255);
-        out[o + 2] = clamp(Math.round(255 * (1.2 - 1.6 * t)), 0, 255);
+        out[o + 2] = clamp(Math.round(255 * (1.25 - 1.8 * t)), 0, 255);
       }
       out[o + 3] = 255;
     }
@@ -365,27 +300,17 @@ function drawGridOverlay(w, h) {
 }
 
 function renderStats(src) {
-  const heights = src.heights;
-  let minY = 999;
-  let maxY = -999;
-  let sum = 0;
-  let land = 0;
-  for (let i = 0; i < heights.length; i += 1) {
-    const v = heights[i];
-    minY = Math.min(minY, v);
-    maxY = Math.max(maxY, v);
-    sum += v;
-    if (v >= src.config.seaLevel) land += 1;
-  }
-
+  const st = src.config.generationStats || {};
   const rows = [
     `Résolution preview: ${src.width}x${src.height} (cible ${src.config.targetWidth}x${src.config.targetHeight})`,
-    `Qualité: ${QUALITY_LABEL[src.config.quality] || src.config.quality}`,
-    `Seed: ${src.config.seed}`,
-    `Sea level: Y${src.config.seaLevel}`,
-    `Altitude min/max: Y${minY} -> Y${maxY}`,
-    `Moyenne: Y${(sum / heights.length).toFixed(1)}`,
-    `Terres: ${((land / heights.length) * 100).toFixed(1)}% | Océan: ${(100 - ((land / heights.length) * 100)).toFixed(1)}%`
+    `Terre cible : ${(st.targetLandPct || 0).toFixed(1)}%`,
+    `Terre réelle : ${(st.realLandPct || 0).toFixed(1)}%`,
+    `Océan réel : ${(st.realOceanPct || 0).toFixed(1)}%`,
+    `Sea level : Y${st.seaLevel || 64}`,
+    `Altitude min/max : Y${st.minY ?? src.config.minY} → Y${st.maxY ?? src.config.maxY}`,
+    `Nombre d'îles : ${st.islandCount || 1}`,
+    `Nombre de rivières : ${st.riverCount || 0}`,
+    `Micro-îles supprimées : ${st.removedMicroIslands || 0}`
   ];
 
   ui.stats.innerHTML = '';
@@ -397,16 +322,15 @@ function renderStats(src) {
 }
 
 function renderSummary(cfg) {
-  const world = WORLD_PRESETS[ui.worldType.value];
   const rows = [
-    `Type : ${world.label}`,
-    `Taille : ${cfg.targetWidth}x${cfg.targetHeight}`,
+    `Type : ${WORLD_PRESETS[ui.worldType.value].label}`,
+    `Land coverage : ${ui.landCoverage.options[ui.landCoverage.selectedIndex].text}`,
+    `Marge océanique : ${ui.oceanBorder.options[ui.oceanBorder.selectedIndex].text}`,
     `Relief : ${ui.reliefStyle.options[ui.reliefStyle.selectedIndex].text}`,
-    `Eau : ${ui.waterAmount.options[ui.waterAmount.selectedIndex].text}`,
+    `Océan : ${ui.oceanDepth.options[ui.oceanDepth.selectedIndex].text}`,
     `Côtes : ${ui.coastStyle.options[ui.coastStyle.selectedIndex].text}`,
     `Rivières : ${ui.riversLevel.options[ui.riversLevel.selectedIndex].text}`,
-    `Qualité : ${QUALITY_LABEL[cfg.quality] || cfg.quality}`,
-    `Sea level : Y${cfg.seaLevel}`
+    `Qualité : ${QUALITY_LABEL[cfg.quality] || cfg.quality}`
   ];
 
   ui.configSummary.innerHTML = '';
@@ -414,6 +338,24 @@ function renderSummary(cfg) {
     const li = document.createElement('li');
     li.textContent = text;
     ui.configSummary.appendChild(li);
+  });
+}
+
+function renderWorldPainter(cfg) {
+  const tips = cfg.generationStats?.worldPainterTips;
+  const rows = [
+    'Compatibilité WorldPainter : Oui (profil WorldPainter Safe)',
+    `Low mapping : ${tips?.lowMapping || `0 → Y${cfg.minY}`}`,
+    `Water level : ${tips?.waterLevel || 'Y64'}`,
+    `High mapping : ${tips?.highMapping || `255 → Y${cfg.maxY}`}`,
+    `Build limit : ${tips?.buildLimit || '-64 / 319'}`
+  ];
+
+  ui.worldPainterCompatibility.innerHTML = '';
+  rows.forEach((text) => {
+    const li = document.createElement('li');
+    li.textContent = text;
+    ui.worldPainterCompatibility.appendChild(li);
   });
 }
 
@@ -430,23 +372,14 @@ function renderHistogram(src) {
   for (let i = src.config.minY; i <= src.config.maxY; i += 1) {
     const x = ((i - src.config.minY) / Math.max(1, src.config.maxY - src.config.minY)) * ui.histogram.width;
     const h = (bins[i] / maxBin) * (ui.histogram.height - 16);
-    histCtx.fillStyle = i < src.config.seaLevel ? '#3c78d8' : '#7fd38f';
+    histCtx.fillStyle = i < 64 ? '#3c78d8' : '#7fd38f';
     histCtx.fillRect(x, ui.histogram.height - h, Math.max(1, ui.histogram.width / 256), h);
   }
 }
 
 function updateImpactNote() {
-  const size = Number(ui.mapSize.value);
-  const quality = ui.qualityMode.value;
-  const coast = ui.coastStyle.value;
-  const world = WORLD_PRESETS[ui.worldType.value];
-
-  const notes = [world.description];
-  if (quality === 'high') notes.push('Haute qualité : plus lent, mais meilleur relief.');
-  if (size === 4096) notes.push('4096 : très lourd, recommandé uniquement pour export final.');
-  if (coast === 'rocky') notes.push('Côtes rocheuses : plus de falaises, moins de plages.');
-
-  ui.impactNote.textContent = notes.join(' · ');
+  const preset = WORLD_PRESETS[ui.worldType.value];
+  ui.impactNote.textContent = `${preset.label} · Terre cible ${Math.round(LAND_COVERAGE[ui.landCoverage.value] * 100)}% · Marge océanique ${ui.oceanBorder.options[ui.oceanBorder.selectedIndex].text}`;
 }
 
 function filenameBase(cfg) {
@@ -489,100 +422,59 @@ async function exportPng() {
     const o = i * 4;
     image[o] = g; image[o + 1] = g; image[o + 2] = g; image[o + 3] = 255;
   }
-  const offscreen = document.createElement('canvas');
-  offscreen.width = full.width;
-  offscreen.height = full.height;
-  offscreen.getContext('2d').putImageData(new ImageData(image, full.width, full.height), 0, 0);
+
+  const off = document.createElement('canvas');
+  off.width = full.width;
+  off.height = full.height;
+  off.getContext('2d').putImageData(new ImageData(image, full.width, full.height), 0, 0);
+
   const a = document.createElement('a');
   a.download = `${filenameBase(full.config)}.png`;
-  a.href = offscreen.toDataURL('image/png');
+  a.href = off.toDataURL('image/png');
   a.click();
-  renderPreview();
 }
 
 async function exportPresetJson() {
   if (!state.preview) return;
   const full = await awaitFullResolution();
-  let minY = 999;
-  let maxY = -999;
-  for (let i = 0; i < full.heights.length; i += 1) {
-    minY = Math.min(minY, full.heights[i]);
-    maxY = Math.max(maxY, full.heights[i]);
-  }
-
   const payload = {
     generatedAt: new Date().toISOString(),
     preset: WORLD_PRESETS[ui.worldType.value].label,
     simple: {
       mapSize: ui.mapSize.value,
       worldType: ui.worldType.value,
+      landCoverage: ui.landCoverage.value,
+      oceanBorder: ui.oceanBorder.value,
       reliefStyle: ui.reliefStyle.value,
-      waterAmount: ui.waterAmount.value,
+      oceanDepth: ui.oceanDepth.value,
       coastStyle: ui.coastStyle.value,
       riversLevel: ui.riversLevel.value,
       quality: ui.qualityMode.value
     },
     config: full.config,
-    mapping: {
-      minY,
-      maxY,
-      minecraftMinY: MC_MIN_Y,
-      minecraftMaxY: MC_MAX_Y,
-      seaLevel: full.config.seaLevel,
-      seaGray8: minecraftYToGray(full.config.seaLevel, 8),
-      seaGray16: minecraftYToGray(full.config.seaLevel, 16),
-      formula: 'gray = ((terrainY - minecraftMinY) / (minecraftMaxY - minecraftMinY)) * 255'
-    }
+    worldPainter: full.config.generationStats?.worldPainterTips
   };
   downloadBlob('heightmap_export.json', new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
 }
 
 function bindSimpleInteractions() {
-  ['mapSize', 'worldType', 'reliefStyle', 'waterAmount', 'coastStyle', 'riversLevel', 'qualityMode'].forEach((key) => {
+  ['mapSize', 'worldType', 'landCoverage', 'oceanBorder', 'reliefStyle', 'oceanDepth', 'coastStyle', 'riversLevel', 'qualityMode'].forEach((key) => {
     ui[key].addEventListener('change', () => {
-      const derived = deriveConfigFromSimple();
-      syncAdvancedInputs(derived);
+      if (key === 'worldType') applyPresetToSimple(ui.worldType.value);
       updateImpactNote();
       state.full = null;
       setManualGuidance();
     });
   });
 
-  ui.seed.addEventListener('change', () => {
-    state.full = null;
-    setManualGuidance();
-  });
+  ui.seed.addEventListener('change', () => { state.full = null; setManualGuidance(); });
+  ui.generate.addEventListener('click', () => { state.full = null; launchGeneration('full', 1); });
+  ui.quickPreview.addEventListener('click', () => { state.full = null; launchGeneration('preview', previewScaleFor(Number(ui.mapSize.value))); });
+  ui.randomSeed.addEventListener('click', () => { randomSeed(); state.full = null; setManualGuidance(); });
+  ui.newSeed.addEventListener('click', () => { randomSeed(); state.full = null; setManualGuidance(); });
 
-  ui.generate.addEventListener('click', () => {
-    state.full = null;
-    launchGeneration('full', 1);
-  });
-
-  ui.quickPreview.addEventListener('click', () => {
-    state.full = null;
-    const scale = previewScaleFor(Number(ui.mapSize.value));
-    launchGeneration('preview', scale);
-  });
-
-  ui.randomSeed.addEventListener('click', () => {
-    randomSeed();
-    state.full = null;
-    setManualGuidance();
-  });
-
-  ui.newSeed.addEventListener('click', () => {
-    randomSeed();
-    state.full = null;
-    setManualGuidance();
-  });
-
-  ['sea-level', 'min-y', 'max-y', 'erosion-strength', 'mountain-scale', 'river-depth', 'coastline-complexity', 'quantization', 'cleanup-strength'].forEach((id) => {
-    const el = $(id);
-    el.addEventListener('input', () => {
-      bindAdvancedValue(id, id === 'sea-level' ? `Y${el.value}` : null);
-      state.full = null;
-      setManualGuidance();
-    });
+  ['min-y', 'max-y', 'mountain-scale', 'river-depth', 'cleanup-strength'].forEach((id) => {
+    $(id).addEventListener('input', () => { state.full = null; setManualGuidance(); });
   });
 }
 
@@ -613,8 +505,7 @@ Object.entries(DEFAULT_SIMPLE).forEach(([k, v]) => {
   const el = $(id);
   if (el) el.value = v;
 });
-const derived = deriveConfigFromSimple();
-syncAdvancedInputs(derived);
+applyPresetToSimple(ui.worldType.value);
 bindSimpleInteractions();
 updateImpactNote();
 setManualGuidance();
