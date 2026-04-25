@@ -123,7 +123,7 @@ const SHAPE_PROFILE = {
   continental: { mainIslandRadius: 0.78, shapeElongation: { x: 1.28, y: 0.78 }, domainWarp: 0.1 }
 };
 
-const QUALITY_LABEL = { fast: 'Rapide', balanced: 'Équilibrée', high: 'Haute qualité' };
+const QUALITY_LABEL = { fast: 'Rapide', balanced: 'Équilibrée', high: 'Haute qualité', extreme: 'Extrême' };
 const ctx = ui.canvas.getContext('2d', { willReadFrequently: true });
 const histCtx = ui.histogram.getContext('2d');
 const worker = new Worker('terrain-worker.js');
@@ -357,7 +357,11 @@ worker.onmessage = (event) => {
       slope: new Float32Array(data.slope),
       biomeMap: new Uint8Array(data.biomeMap),
       image: new Uint8ClampedArray(data.image),
-      config: data.config
+      config: data.config,
+      internalMaps: Object.fromEntries(Object.entries(data.internalMaps || {}).map(([key, buffer]) => {
+        if (key === 'landMask') return [key, new Uint8Array(buffer)];
+        return [key, new Float32Array(buffer)];
+      }))
     };
 
     state.preview = payload;
@@ -395,6 +399,28 @@ function renderPreview() {
         out[o] = shade; out[o + 1] = shade; out[o + 2] = shade;
       } else if (mode === 'slope-preview') {
         out[o] = s; out[o + 1] = 90; out[o + 2] = 255 - s;
+      } else if (mode === 'erosion-preview') {
+        const e = clamp((src.internalMaps?.erosionMap?.[i] || 0) * 180, 0, 255);
+        out[o] = e;
+        out[o + 1] = Math.max(0, 210 - e);
+        out[o + 2] = 90;
+      } else if (mode === 'rivers-preview') {
+        const flow = src.internalMaps?.riverFlowMap?.[i] || 0;
+        const water = clamp(Math.log2(Math.max(1, flow)) * 35, 0, 255);
+        out[o] = 20;
+        out[o + 1] = 60 + Math.round(water * 0.45);
+        out[o + 2] = 120 + Math.round(water * 0.5);
+      } else if (mode === 'tectonic-preview') {
+        const t = clamp((src.internalMaps?.tectonicMap?.[i] || 0) * 255, 0, 255);
+        out[o] = t;
+        out[o + 1] = 70;
+        out[o + 2] = 255 - t;
+      } else if (mode === 'coast-distance-preview') {
+        const cd = src.internalMaps?.coastDistanceMap?.[i] || 0;
+        const v = clamp(cd * 8, 0, 255);
+        out[o] = 30 + Math.round(v * 0.3);
+        out[o + 1] = 120 + Math.round(v * 0.4);
+        out[o + 2] = 240 - Math.round(v * 0.65);
       } else if (mode === 'contour-preview') {
         const g = minecraftYToGray(h, 8);
         const contour = h % 8 === 0 || h % 16 === 0;
@@ -439,6 +465,7 @@ function renderStats(src) {
     `Altitude min/max : Y${st.minY ?? src.config.minY} → Y${st.maxY ?? src.config.maxY}`,
     `Nombre d'îles : ${st.islandCount || 1}`,
     `Nombre de rivières : ${st.riverCount || 0}`,
+    `Régions tectoniques : ${st.tectonicRegionCount || 0}`,
     `Régions biomes : ${st.biomeRegionCount || 0}`,
     `Micro-îles supprimées : ${st.removedMicroIslands || 0}`
   ];
