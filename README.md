@@ -35,6 +35,7 @@ Pipeline appliqué (obligatoire) :
 - Nettoyage WorldPainter (anti micro-îles, anti-trous, anti-spikes incohérents).
 - Visualisations: grayscale, hillshade, contour lines, slope view, altitude heatmap.
 - Exports PNG 8-bit, PGM 16-bit, JSON preset.
+- Profil d'export **WorldPainter** (Lowest/Water/Highest, Build Limits, courbes, modes d'export, validation).
 
 ## Lancer
 
