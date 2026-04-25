@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 
 const MC_MIN_Y = -64;
 const MC_MAX_Y = 320;
+const BIOME_DATA = globalThis.BIOME_SYSTEM;
 
 const DEFAULT_SIMPLE = {
   mapSize: '1024',
@@ -25,6 +26,13 @@ const ui = {
   coastStyle: $('coast-style'),
   riversLevel: $('rivers-level'),
   qualityMode: $('quality-mode'),
+  biomePreset: $('biome-preset'),
+  biomeList: $('biome-list'),
+  biomeAdvancedList: $('biome-advanced-list'),
+  biomeTotal: $('biome-total'),
+  biomeRebalance: $('biome-rebalance'),
+  biomeRandom: $('biome-random'),
+  biomeTransitionWidth: $('biome-transition-width'),
   seed: $('seed'),
   randomSeed: $('random-seed'),
   newSeed: $('new-seed'),
@@ -49,29 +57,30 @@ const ui = {
   progress: $('progress'),
   pipelineStep: $('pipeline-step'),
   stats: $('stats'),
+  biomeResults: $('biome-results'),
   configSummary: $('config-summary'),
   worldPainterCompatibility: $('wp-compatibility'),
   viewport: $('viewport')
 };
 
 const LAND_COVERAGE = {
-  "very-low": 0.2,
+  'very-low': 0.2,
   low: 0.3,
   medium: 0.45,
   high: 0.6,
-  "very-high": 0.75
+  'very-high': 0.75
 };
 
 const OCEAN_BORDER = {
   near: 0.05,
   standard: 0.12,
   wide: 0.2,
-  "very-wide": 0.28,
+  'very-wide': 0.28,
   immense: 0.35
 };
 
 const RELIEF_PROFILE = {
-  "very-flat": { reliefInterior: 0.35, mountainAmount: 0.25, mountainHeight: 38, playableFlatBias: 0.88 },
+  'very-flat': { reliefInterior: 0.35, mountainAmount: 0.25, mountainHeight: 38, playableFlatBias: 0.88 },
   playable: { reliefInterior: 0.55, mountainAmount: 0.42, mountainHeight: 62, playableFlatBias: 0.72 },
   varied: { reliefInterior: 0.72, mountainAmount: 0.55, mountainHeight: 84, playableFlatBias: 0.58 },
   mountainous: { reliefInterior: 0.86, mountainAmount: 0.72, mountainHeight: 104, playableFlatBias: 0.42 },
@@ -119,7 +128,7 @@ const ctx = ui.canvas.getContext('2d', { willReadFrequently: true });
 const histCtx = ui.histogram.getContext('2d');
 const worker = new Worker('terrain-worker.js');
 let pendingJob = null;
-const state = { preview: null, full: null, config: null };
+const state = { preview: null, full: null, config: null, biomeMix: [] };
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -144,12 +153,22 @@ function randomSeed() {
 }
 
 function fillWorldTypeOptions() {
-  ['ile-pokemon', 'ile-realiste', 'archipel', 'grande-ile-rpg', 'continent-cotier'].forEach((value) => {
+  Object.entries(WORLD_PRESETS).forEach(([value, preset]) => {
     const opt = document.createElement('option');
     opt.value = value;
-    opt.textContent = WORLD_PRESETS[value].label;
+    opt.textContent = preset.label;
     ui.worldType.appendChild(opt);
   });
+}
+
+function fillBiomePresetOptions() {
+  Object.entries(BIOME_DATA.BIOME_PRESETS).forEach(([value, preset]) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = preset.label;
+    ui.biomePreset.appendChild(opt);
+  });
+  ui.biomePreset.value = 'balanced_pokemon';
 }
 
 function applyPresetToSimple(id) {
@@ -160,6 +179,102 @@ function applyPresetToSimple(id) {
   ui.reliefStyle.value = preset.reliefStyle;
   ui.coastStyle.value = preset.coastStyle;
   ui.riversLevel.value = preset.riversLevel;
+}
+
+function loadBiomePreset(id) {
+  const preset = BIOME_DATA.BIOME_PRESETS[id];
+  if (!preset) return;
+  state.biomeMix = BIOME_DATA.BIOME_PROFILES.map((profile) => {
+    const target = preset.mix[profile.id] ?? profile.targetPercent;
+    const enabled = profile.id === 'ocean' || profile.id === 'coast' ? true : target > 0;
+    return {
+      id: profile.id,
+      enabled,
+      targetPercent: target,
+      locked: profile.id === 'ocean' || profile.id === 'coast',
+      overrides: {
+        minAltitude: profile.minAltitude,
+        maxAltitude: profile.maxAltitude,
+        roughness: profile.roughness,
+        flatness: profile.flatness,
+        riverAffinity: profile.riverAffinity,
+        mountainInfluence: profile.mountainInfluence,
+        coastAffinity: profile.coastAffinity,
+        erosionStrength: profile.erosionStrength
+      }
+    };
+  });
+  normalizeBiomeMix();
+  renderBiomeEditor();
+}
+
+function normalizeBiomeMix() {
+  const lands = state.biomeMix.filter((b) => b.id !== 'ocean' && b.id !== 'coast' && b.enabled);
+  const total = lands.reduce((sum, b) => sum + Number(b.targetPercent || 0), 0);
+  if (total <= 0) {
+    const defaultPlains = lands.find((b) => b.id === 'plains') || lands[0];
+    if (defaultPlains) defaultPlains.targetPercent = 100;
+  } else {
+    lands.forEach((b) => { b.targetPercent = (Number(b.targetPercent || 0) / total) * 100; });
+  }
+}
+
+function randomizeBiomeMix() {
+  const editable = state.biomeMix.filter((b) => !b.locked && b.id !== 'ocean' && b.id !== 'coast' && b.enabled);
+  if (!editable.length) return;
+  let total = 0;
+  editable.forEach((b) => {
+    b.targetPercent = Math.random() * 100;
+    total += b.targetPercent;
+  });
+  editable.forEach((b) => { b.targetPercent = (b.targetPercent / total) * 100; });
+  renderBiomeEditor();
+  setManualGuidance();
+}
+
+function renderBiomeEditor() {
+  ui.biomeList.innerHTML = '';
+  ui.biomeAdvancedList.innerHTML = '';
+
+  state.biomeMix.forEach((entry) => {
+    const profile = BIOME_DATA.BIOME_PROFILES.find((p) => p.id === entry.id);
+    const item = document.createElement('div');
+    item.className = 'biome-item';
+    item.innerHTML = `
+      <div class="top">
+        <input data-action="enabled" data-id="${entry.id}" type="checkbox" ${entry.enabled ? 'checked' : ''} ${entry.locked ? 'disabled' : ''} />
+        <span><span class="dot" style="display:inline-block;background:${profile.color}"></span> ${profile.name}</span>
+        <label class="check"><input data-action="locked" data-id="${entry.id}" type="checkbox" ${entry.locked ? 'checked' : ''} ${entry.id === 'ocean' || entry.id === 'coast' ? 'disabled' : ''}/>Lock</label>
+      </div>
+      <div class="pct-row">
+        <input data-action="range" data-id="${entry.id}" type="range" min="0" max="100" step="0.1" value="${entry.targetPercent.toFixed(2)}" ${entry.enabled ? '' : 'disabled'} ${entry.locked ? 'disabled' : ''}/>
+        <input data-action="percent" data-id="${entry.id}" type="number" min="0" max="100" step="0.1" value="${entry.targetPercent.toFixed(1)}" ${entry.enabled ? '' : 'disabled'} ${entry.locked ? 'disabled' : ''}/>
+        <span>%</span>
+      </div>`;
+    ui.biomeList.appendChild(item);
+
+    if (entry.id === 'ocean' || entry.id === 'coast') return;
+    const adv = document.createElement('div');
+    adv.className = 'biome-advanced-item';
+    adv.innerHTML = `<strong>${profile.name}</strong>
+      <div class="biome-advanced-grid">
+        <label>Min Y<input data-adv="minAltitude" data-id="${entry.id}" type="number" value="${entry.overrides.minAltitude}"/></label>
+        <label>Max Y<input data-adv="maxAltitude" data-id="${entry.id}" type="number" value="${entry.overrides.maxAltitude}"/></label>
+        <label>Rough<input data-adv="roughness" data-id="${entry.id}" type="number" step="0.01" min="0" max="1" value="${entry.overrides.roughness}"/></label>
+        <label>Flat<input data-adv="flatness" data-id="${entry.id}" type="number" step="0.01" min="0" max="1" value="${entry.overrides.flatness}"/></label>
+        <label>River<input data-adv="riverAffinity" data-id="${entry.id}" type="number" step="0.01" min="0" max="1" value="${entry.overrides.riverAffinity}"/></label>
+        <label>Montagne<input data-adv="mountainInfluence" data-id="${entry.id}" type="number" step="0.01" min="0" max="1" value="${entry.overrides.mountainInfluence}"/></label>
+        <label>Côte<input data-adv="coastAffinity" data-id="${entry.id}" type="number" step="0.01" min="0" max="1" value="${entry.overrides.coastAffinity}"/></label>
+        <label>Erosion<input data-adv="erosionStrength" data-id="${entry.id}" type="number" step="0.01" min="0" max="1" value="${entry.overrides.erosionStrength}"/></label>
+      </div>`;
+    ui.biomeAdvancedList.appendChild(adv);
+  });
+
+  const total = state.biomeMix
+    .filter((b) => b.enabled && b.id !== 'ocean' && b.id !== 'coast')
+    .reduce((sum, b) => sum + Number(b.targetPercent), 0);
+  ui.biomeTotal.textContent = `Total biomes terrestres : ${total.toFixed(1)}%${Math.abs(total - 100) > 0.25 ? ' (warning: rééquilibrage conseillé)' : ''}`;
+  ui.biomeTotal.style.color = Math.abs(total - 100) > 0.25 ? 'var(--warning)' : 'var(--muted)';
 }
 
 function deriveConfigFromSimple() {
@@ -183,7 +298,8 @@ function deriveConfigFromSimple() {
     secondaryIslands: preset.secondaryIslands,
     ridgeSharpness: 1.2 + Number(ui.mountainScale.value) * 1.2,
     minY: clamp(Number(ui.minY.value) || 20, -64, 240),
-    maxY: clamp(Number(ui.maxY.value) || 260, 80, 320)
+    maxY: clamp(Number(ui.maxY.value) || 260, 80, 320),
+    biomeTransitionWidth: Number(ui.biomeTransitionWidth.value)
   };
 }
 
@@ -191,6 +307,10 @@ function collectSettings(scale = 1) {
   const targetSize = Number(ui.mapSize.value);
   const dim = Math.max(256, Math.floor(targetSize * scale));
   const d = deriveConfigFromSimple();
+  const biomeMix = state.biomeMix.map((entry) => ({
+    ...entry,
+    targetPercent: Number(entry.targetPercent || 0)
+  }));
 
   return {
     width: dim,
@@ -200,6 +320,8 @@ function collectSettings(scale = 1) {
     seed: ui.seed.value.trim() || 'minecraft-surface',
     quality: ui.qualityMode.value,
     safeMode: true,
+    biomeMix,
+    biomePreset: ui.biomePreset.value,
     ...d,
     riverDepth: d.riverDepth + Number(ui.riverDepth.value)
   };
@@ -233,6 +355,7 @@ worker.onmessage = (event) => {
       height: data.height,
       heights: new Uint16Array(data.heights),
       slope: new Float32Array(data.slope),
+      biomeMap: new Uint8Array(data.biomeMap),
       image: new Uint8ClampedArray(data.image),
       config: data.config
     };
@@ -262,6 +385,7 @@ function renderPreview() {
     ctx.putImageData(image, 0, 0);
   } else {
     const out = new Uint8ClampedArray(src.image.length);
+    const palette = src.config.generationStats?.biomePalette || {};
     for (let i = 0; i < src.heights.length; i += 1) {
       const h = src.heights[i];
       const s = clamp(Math.round(src.slope[i] * 8), 0, 255);
@@ -277,6 +401,11 @@ function renderPreview() {
         out[o] = contour ? 255 : g;
         out[o + 1] = contour ? 230 : g;
         out[o + 2] = contour ? 120 : g;
+      } else if (mode === 'biome-map') {
+        const color = palette[src.biomeMap[i]] || '#808080';
+        out[o] = Number.parseInt(color.slice(1, 3), 16);
+        out[o + 1] = Number.parseInt(color.slice(3, 5), 16);
+        out[o + 2] = Number.parseInt(color.slice(5, 7), 16);
       } else {
         const t = clamp((h - src.config.minY) / Math.max(1, src.config.maxY - src.config.minY), 0, 1);
         out[o] = clamp(Math.round(255 * (1.6 * t)), 0, 255);
@@ -310,6 +439,7 @@ function renderStats(src) {
     `Altitude min/max : Y${st.minY ?? src.config.minY} → Y${st.maxY ?? src.config.maxY}`,
     `Nombre d'îles : ${st.islandCount || 1}`,
     `Nombre de rivières : ${st.riverCount || 0}`,
+    `Régions biomes : ${st.biomeRegionCount || 0}`,
     `Micro-îles supprimées : ${st.removedMicroIslands || 0}`
   ];
 
@@ -319,11 +449,19 @@ function renderStats(src) {
     li.textContent = text;
     ui.stats.appendChild(li);
   });
+
+  ui.biomeResults.innerHTML = '';
+  (st.biomeDistribution || []).forEach((b) => {
+    const li = document.createElement('li');
+    li.textContent = `${b.name} : cible ${b.target.toFixed(1)}% · réel ${b.real.toFixed(1)}%`;
+    ui.biomeResults.appendChild(li);
+  });
 }
 
 function renderSummary(cfg) {
   const rows = [
     `Type : ${WORLD_PRESETS[ui.worldType.value].label}`,
+    `Preset biomes : ${BIOME_DATA.BIOME_PRESETS[ui.biomePreset.value]?.label || ui.biomePreset.value}`,
     `Land coverage : ${ui.landCoverage.options[ui.landCoverage.selectedIndex].text}`,
     `Marge océanique : ${ui.oceanBorder.options[ui.oceanBorder.selectedIndex].text}`,
     `Relief : ${ui.reliefStyle.options[ui.reliefStyle.selectedIndex].text}`,
@@ -440,6 +578,7 @@ async function exportPresetJson() {
   const payload = {
     generatedAt: new Date().toISOString(),
     preset: WORLD_PRESETS[ui.worldType.value].label,
+    biomePreset: BIOME_DATA.BIOME_PRESETS[ui.biomePreset.value]?.label,
     simple: {
       mapSize: ui.mapSize.value,
       worldType: ui.worldType.value,
@@ -451,6 +590,7 @@ async function exportPresetJson() {
       riversLevel: ui.riversLevel.value,
       quality: ui.qualityMode.value
     },
+    biomeMix: state.biomeMix,
     config: full.config,
     worldPainter: full.config.generationStats?.worldPainterTips
   };
@@ -466,6 +606,50 @@ function bindSimpleInteractions() {
       setManualGuidance();
     });
   });
+
+  ui.biomePreset.addEventListener('change', () => {
+    loadBiomePreset(ui.biomePreset.value);
+    state.full = null;
+    setManualGuidance();
+  });
+
+  ui.biomeRebalance.addEventListener('click', () => {
+    normalizeBiomeMix();
+    renderBiomeEditor();
+    state.full = null;
+    setManualGuidance();
+  });
+  ui.biomeRandom.addEventListener('click', randomizeBiomeMix);
+
+  ui.biomeList.addEventListener('input', (event) => {
+    const target = event.target;
+    const id = target.dataset.id;
+    if (!id) return;
+    const entry = state.biomeMix.find((b) => b.id === id);
+    if (!entry) return;
+    if (target.dataset.action === 'enabled') entry.enabled = target.checked;
+    if (target.dataset.action === 'locked') entry.locked = target.checked;
+    if (target.dataset.action === 'percent' || target.dataset.action === 'range') {
+      entry.targetPercent = clamp(Number(target.value), 0, 100);
+    }
+    renderBiomeEditor();
+    state.full = null;
+    setManualGuidance();
+  });
+
+  ui.biomeAdvancedList.addEventListener('input', (event) => {
+    const target = event.target;
+    const id = target.dataset.id;
+    const field = target.dataset.adv;
+    if (!id || !field) return;
+    const entry = state.biomeMix.find((b) => b.id === id);
+    if (!entry) return;
+    entry.overrides[field] = Number(target.value);
+    state.full = null;
+    setManualGuidance();
+  });
+
+  ui.biomeTransitionWidth.addEventListener('input', () => { state.full = null; setManualGuidance(); });
 
   ui.seed.addEventListener('change', () => { state.full = null; setManualGuidance(); });
   ui.generate.addEventListener('click', () => { state.full = null; launchGeneration('full', 1); });
@@ -500,12 +684,14 @@ ui.downloadJson.addEventListener('click', exportPresetJson);
 })();
 
 fillWorldTypeOptions();
+fillBiomePresetOptions();
 Object.entries(DEFAULT_SIMPLE).forEach(([k, v]) => {
   const id = k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
   const el = $(id);
   if (el) el.value = v;
 });
 applyPresetToSimple(ui.worldType.value);
+loadBiomePreset(ui.biomePreset.value);
 bindSimpleInteractions();
 updateImpactNote();
 setManualGuidance();

@@ -147,3 +147,61 @@ canvas { image-rendering: pixelated; display: block; transform-origin: top left;
   .panel { max-height: none; }
   .seed-row { grid-template-columns: 1fr; }
 }
+
+.biome-section h3,
+.biome-advanced-section h3,
+.panel.right h3 {
+  margin: .5rem 0;
+  font-size: .9rem;
+}
+
+.biome-list,
+.biome-advanced-list,
+#biome-results {
+  display: grid;
+  gap: .4rem;
+}
+
+.biome-item,
+.biome-advanced-item {
+  border: 1px solid rgba(129, 145, 184, 0.3);
+  border-radius: 10px;
+  padding: .45rem;
+  background: rgba(9, 15, 26, 0.55);
+}
+
+.biome-item .top {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: .35rem;
+}
+
+.biome-item .pct-row {
+  display: grid;
+  grid-template-columns: 1fr 78px auto;
+  gap: .4rem;
+  margin-top: .35rem;
+  align-items: center;
+}
+
+.biome-item .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.biome-advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .35rem;
+}
+
+.biome-advanced-grid label {
+  margin: 0;
+  font-size: .72rem;
+}
+
+#biome-results li {
+  font-size: .8rem;
+}
