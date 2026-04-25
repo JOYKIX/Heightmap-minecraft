@@ -101,6 +101,10 @@ function generate(payload) {
   const slope = new Float32Array(len);
   const seedNum = hashString(`${cfg.seed}-${cfg.targetWidth}-${cfg.targetHeight}-${phase}`);
   const post = (step, progress) => self.postMessage({ type: 'progress', step, progress });
+  const minY = clamp(Number.isFinite(cfg.minY) ? cfg.minY : SURFACE_MIN_Y, SURFACE_MIN_Y, SURFACE_MAX_Y - 10);
+  const maxY = clamp(Number.isFinite(cfg.maxY) ? cfg.maxY : SURFACE_MAX_Y, minY + 10, SURFACE_MAX_Y);
+  const riverDepth = clamp(Number.isFinite(cfg.riverDepth) ? cfg.riverDepth : 1, 0.3, 2.5);
+  const cleanupStrength = clamp(Number.isFinite(cfg.cleanupStrength) ? cfg.cleanupStrength : 0.5, 0, 1);
 
   const continentalCache = new Float32Array(len);
   const warpXCache = new Float32Array(len);
@@ -143,7 +147,7 @@ function generate(payload) {
       h = lerp(24, h, clamp((im - 0.25) / 0.55, 0, 1));
       h = cfg.seaLevel + (h - cfg.seaLevel) * cfg.layerContrast;
       const micro = (fbm(wx * 16, wy * 16, seedNum + 88, qOct(3, cfg.quality), 2.3, 0.46) - 0.5) * (4 + cfg.terrainVariation * 8) * QUALITY[cfg.quality].reliefMul;
-      map[i] = clamp(h + micro, SURFACE_MIN_Y, SURFACE_MAX_Y);
+      map[i] = clamp(h + micro, minY, maxY);
     }
   }
 
@@ -170,7 +174,7 @@ function generate(payload) {
       const alpine = ridged(wx * 6.2, wy * 6.2, seedNum + 333, 1.7) * cfg.alpineEffect;
       let uplift = ridge * chainMask * cfg.mountainIntensity * 68 + alpine * 26;
       if (chainMask > 0.7) uplift += cfg.peakAmount * 28;
-      map[i] = clamp(map[i] + uplift, SURFACE_MIN_Y, SURFACE_MAX_Y);
+      map[i] = clamp(map[i] + uplift, minY, maxY);
     }
   }
 
@@ -180,7 +184,7 @@ function generate(payload) {
       const i = idx(x, y, width);
       const valleyMask = 1 - Math.pow(fbm(x / width * 3.4, y / height * 3.4, seedNum + 370, qOct(5, cfg.quality), 2.1, 0.48), 1.16);
       const cut = valleyMask * cfg.valleyStrength * (map[i] > 95 ? 22 : 9);
-      map[i] = clamp(map[i] - cut, SURFACE_MIN_Y, SURFACE_MAX_Y);
+      map[i] = clamp(map[i] - cut, minY, maxY);
     }
   }
 
@@ -203,7 +207,7 @@ function generate(payload) {
       const ui = idx(x, y - 1, width); if (map[ui] < nh) { nh = map[ui]; nx = x; ny = y - 1; }
       const di = idx(x, y + 1, width); if (map[di] < nh) { nh = map[di]; nx = x; ny = y + 1; }
       if (nh > current) break;
-      const depth = 1 + (s / maxSteps) * 3;
+      const depth = (1 + (s / maxSteps) * 3) * riverDepth;
       map[ci] -= depth;
       map[li] -= depth * 0.16;
       map[ri] -= depth * 0.16;
@@ -247,11 +251,11 @@ function generate(payload) {
   post('6/9 Quantization + cleanup', 0.79);
   const plateauStep = 12 - cfg.plateauAmount * 8;
   for (let i = 0; i < len; i += 1) {
-    const q = clamp(Math.round(map[i]), SURFACE_MIN_Y, SURFACE_MAX_Y);
-    heights[i] = clamp(Math.round(lerp(q, Math.round(q / plateauStep) * plateauStep, cfg.plateauAmount * 0.24)), SURFACE_MIN_Y, SURFACE_MAX_Y);
+    const q = clamp(Math.round(map[i]), minY, maxY);
+    heights[i] = clamp(Math.round(lerp(q, Math.round(q / plateauStep) * plateauStep, cfg.plateauAmount * 0.24)), minY, maxY);
   }
 
-  const cleanupPasses = QUALITY[cfg.quality].cleanupPasses;
+  const cleanupPasses = Math.max(0, Math.round(QUALITY[cfg.quality].cleanupPasses * (0.35 + cleanupStrength * 1.65)));
   for (let p = 0; p < cleanupPasses; p += 1) {
     for (let y = 1; y < height - 1; y += 1) {
       for (let x = 1; x < width - 1; x += 1) {
@@ -263,8 +267,8 @@ function generate(payload) {
         const d = heights[idx(x, y + 1, width)];
         const maxN = Math.max(l, r, u, d);
         const minN = Math.min(l, r, u, d);
-        if (h > maxN + 22) heights[i] = maxN + 8;
-        if (h < minN - 18) heights[i] = minN - 6;
+        if (h > maxN + 22) heights[i] = clamp(maxN + 8, minY, maxY);
+        if (h < minN - 18) heights[i] = clamp(minN - 6, minY, maxY);
       }
     }
   }
@@ -280,7 +284,7 @@ function generate(payload) {
         const u = heights[idx(x, y - 1, width)];
         const d = heights[idx(x, y + 1, width)];
         const avg = (l + r + u + d) / 4;
-        if (Math.abs(here - avg) >= 12) heights[i] = Math.round((here + avg) / 2);
+        if (Math.abs(here - avg) >= 12) heights[i] = clamp(Math.round((here + avg) / 2), minY, maxY);
       }
     }
   }
