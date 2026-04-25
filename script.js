@@ -2,13 +2,6 @@ const $ = (id) => document.getElementById(id);
 
 const MC_MIN_Y = -64;
 const MC_MAX_Y = 320;
-const DEFAULT_WP_EXPORT = {
-  minHeight: 56,
-  waterLevel: 64,
-  maxHeight: 106,
-  buildLimitMin: -64,
-  buildLimitMax: 319
-};
 const DEFAULT_SIMPLE = {
   mapSize: '1024',
   worldType: 'ile-pokemon',
@@ -48,7 +41,6 @@ const ui = {
   zoom: $('zoom'),
   showGrid: $('show-grid'),
   downloadPng: $('download-png'),
-  validateHeightmap: $('validate-heightmap'),
   downloadJson: $('download-json'),
   canvas: $('canvas'),
   histogram: $('histogram'),
@@ -56,18 +48,7 @@ const ui = {
   pipelineStep: $('pipeline-step'),
   stats: $('stats'),
   configSummary: $('config-summary'),
-  viewport: $('viewport'),
-  wpMinHeight: $('wp-min-height'),
-  wpMaxHeight: $('wp-max-height'),
-  wpWaterLevel: $('wp-water-level'),
-  wpBuildMin: $('wp-build-min'),
-  wpBuildMax: $('wp-build-max'),
-  wpExportMode: $('wp-export-mode'),
-  wpCurve: $('wp-curve'),
-  wpSafeMapping: $('wp-safe-mapping'),
-  seaGrayInfo: $('sea-gray-info'),
-  wpCompatibility: $('wp-compatibility'),
-  wpWarning: $('wp-warning')
+  viewport: $('viewport')
 };
 
 const WORLD_PRESETS = {
@@ -154,81 +135,6 @@ function setProgress(step, pct) {
 function minecraftYToGray(y, bitDepth = 8) {
   const t = clamp((y - MC_MIN_Y) / Math.max(1, MC_MAX_Y - MC_MIN_Y), 0, 1);
   return Math.round(t * (bitDepth === 16 ? 65535 : 255));
-}
-
-function collectWorldPainterSettings() {
-  const buildMin = clamp(Number(ui.wpBuildMin.value) || DEFAULT_WP_EXPORT.buildLimitMin, MC_MIN_Y, 319);
-  const buildMax = clamp(Number(ui.wpBuildMax.value) || DEFAULT_WP_EXPORT.buildLimitMax, buildMin + 1, 319);
-  let minHeight = clamp(Number(ui.wpMinHeight.value) || DEFAULT_WP_EXPORT.minHeight, buildMin, buildMax - 1);
-  let maxHeight = clamp(Number(ui.wpMaxHeight.value) || DEFAULT_WP_EXPORT.maxHeight, minHeight + 1, buildMax);
-  let waterLevel = clamp(Number(ui.wpWaterLevel.value) || DEFAULT_WP_EXPORT.waterLevel, minHeight, maxHeight);
-
-  if (maxHeight <= minHeight) maxHeight = Math.min(buildMax, minHeight + 1);
-  waterLevel = clamp(waterLevel, minHeight, maxHeight);
-
-  return {
-    minHeight,
-    maxHeight,
-    waterLevel,
-    buildLimitMin: buildMin,
-    buildLimitMax: buildMax,
-    exportMode: ui.wpExportMode.value,
-    curve: ui.wpCurve.value,
-    safeMapping: ui.wpSafeMapping.checked
-  };
-}
-
-function toGrayFromExportRange(terrainY, exportMinY, exportMaxY) {
-  const span = Math.max(1, exportMaxY - exportMinY);
-  const normalized = (terrainY - exportMinY) / span;
-  return clamp(normalized * 255, 0, 255);
-}
-
-function grayToTerrainY(gray, exportMinY, exportMaxY) {
-  return exportMinY + (gray / 255) * (exportMaxY - exportMinY);
-}
-
-function curveMap(t, curve) {
-  const c = clamp(t, 0, 1);
-  if (curve === 'terrain') return Math.pow(c, 0.88) * 0.76 + c * 0.24;
-  if (curve === 'mountain') return Math.pow(c, 1.35);
-  if (curve === 'flatland') return Math.pow(c, 0.7);
-  if (curve === 'coast') {
-    if (c < 0.35) return c * 0.9;
-    if (c < 0.62) return 0.315 + (c - 0.35) * 1.1;
-    return 0.612 + Math.pow((c - 0.62) / 0.38, 1.2) * 0.388;
-  }
-  return c;
-}
-
-function remapHeightForExport(y, settings) {
-  const { minHeight, maxHeight, exportMode, curve } = settings;
-  const normalized = clamp((y - minHeight) / Math.max(1, maxHeight - minHeight), 0, 1);
-  let modeAdjusted = normalized;
-  if (exportMode === 'safe') modeAdjusted = normalized * 0.92 + 0.04;
-  else if (exportMode === 'realistic') modeAdjusted = Math.pow(normalized, 0.94);
-  else if (exportMode === 'mountains') modeAdjusted = Math.pow(normalized, 1.18);
-  else if (exportMode === 'island') modeAdjusted = normalized < 0.5 ? normalized * 0.78 : 0.39 + (normalized - 0.5) * 1.22;
-  else if (exportMode === 'pokemon') modeAdjusted = normalized < 0.6 ? Math.pow(normalized, 0.78) : 0.67 + (normalized - 0.6) * 0.7;
-
-  const curved = curveMap(modeAdjusted, curve);
-  const mappedY = minHeight + curved * (maxHeight - minHeight);
-  return clamp(mappedY, minHeight, maxHeight);
-}
-
-function analyzeHeights(heights, seaLevel) {
-  let min = Infinity;
-  let max = -Infinity;
-  let sum = 0;
-  let belowSea = 0;
-  for (let i = 0; i < heights.length; i += 1) {
-    const v = heights[i];
-    min = Math.min(min, v);
-    max = Math.max(max, v);
-    sum += v;
-    if (v <= seaLevel) belowSea += 1;
-  }
-  return { min, max, mean: sum / heights.length, belowSeaRatio: belowSea / heights.length };
 }
 
 function randomSeed() {
@@ -357,27 +263,6 @@ function previewScaleFor(size) {
   return 0.75;
 }
 
-function applyWorldPainterSafeMapping(baseSettings, heights) {
-  if (!baseSettings.safeMapping || !heights?.length) return { ...baseSettings, adjusted: false };
-  const stats = analyzeHeights(heights, baseSettings.waterLevel);
-  const terrainSpan = Math.max(1, stats.max - stats.min);
-  let minHeight = baseSettings.minHeight;
-  let maxHeight = baseSettings.maxHeight;
-
-  const desiredSpan = clamp(terrainSpan * 1.14, 40, baseSettings.buildLimitMax - baseSettings.buildLimitMin);
-  const center = (stats.min + stats.max) / 2;
-  minHeight = clamp(Math.round(center - desiredSpan * 0.5), baseSettings.buildLimitMin, baseSettings.buildLimitMax - 1);
-  maxHeight = clamp(Math.round(center + desiredSpan * 0.5), minHeight + 1, baseSettings.buildLimitMax);
-
-  const seaOffset = baseSettings.waterLevel - baseSettings.minHeight;
-  let waterLevel = clamp(minHeight + seaOffset, minHeight, maxHeight);
-
-  if (stats.belowSeaRatio < 0.15) waterLevel = clamp(waterLevel + 1, minHeight, maxHeight);
-  if (stats.belowSeaRatio > 0.6) waterLevel = clamp(waterLevel - 1, minHeight, maxHeight);
-
-  return { ...baseSettings, minHeight, maxHeight, waterLevel, adjusted: true, sourceStats: stats };
-}
-
 function launchGeneration(phase, scale = 1) {
   const cfg = collectConfig(scale);
   state.config = cfg;
@@ -420,24 +305,9 @@ worker.onmessage = (event) => {
   }
 };
 
-function prepareWorldPainterMapping(src) {
-  const settings = applyWorldPainterSafeMapping(collectWorldPainterSettings(), src.heights);
-  const mappedY = new Float32Array(src.heights.length);
-  const gray8 = new Uint8ClampedArray(src.heights.length);
-  for (let i = 0; i < src.heights.length; i += 1) {
-    const transformed = remapHeightForExport(src.heights[i], settings);
-    mappedY[i] = transformed;
-    gray8[i] = Math.round(toGrayFromExportRange(transformed, settings.minHeight, settings.maxHeight));
-  }
-  const seaGray = toGrayFromExportRange(settings.waterLevel, settings.minHeight, settings.maxHeight);
-  return { settings, mappedY, gray8, seaGray };
-}
-
 function renderPreview() {
   const src = state.preview;
   if (!src) return;
-  const wp = prepareWorldPainterMapping(src);
-  ui.seaGrayInfo.textContent = `Sea Level Gray Value = ${Math.round(wp.seaGray)} / 255 (Y${wp.settings.waterLevel})`;
   const mode = ui.previewMode.value;
   const image = new ImageData(src.image, src.width, src.height);
 
@@ -460,21 +330,6 @@ function renderPreview() {
         out[o] = contour ? 255 : g;
         out[o + 1] = contour ? 245 : g;
         out[o + 2] = contour ? 140 : g;
-      } else if (mode === 'wp-import-preview') {
-        const y = wp.mappedY[i];
-        const beachBand = Math.abs(y - wp.settings.waterLevel) <= 2;
-        if (y <= wp.settings.waterLevel) {
-          out[o] = 38;
-          out[o + 1] = 96 + Math.round((y - wp.settings.minHeight) * 0.8);
-          out[o + 2] = 170 + Math.round((y - wp.settings.minHeight) * 0.5);
-        } else if (beachBand) {
-          out[o] = 218; out[o + 1] = 197; out[o + 2] = 141;
-        } else {
-          const t = clamp((y - wp.settings.waterLevel) / Math.max(1, wp.settings.maxHeight - wp.settings.waterLevel), 0, 1);
-          out[o] = 62 + Math.round(120 * t);
-          out[o + 1] = 132 + Math.round(84 * (1 - Math.abs(t - 0.45)));
-          out[o + 2] = 58 + Math.round(80 * (1 - t));
-        }
       } else {
         const t = clamp((h - src.config.minY) / Math.max(1, src.config.maxY - src.config.minY), 0, 1);
         out[o] = clamp(Math.round(255 * (1.5 * t)), 0, 255);
@@ -487,7 +342,6 @@ function renderPreview() {
   }
 
   if (ui.showGrid.checked) drawGridOverlay(src.width, src.height);
-  renderWorldPainterCompatibility(src, wp);
 }
 
 function drawGridOverlay(w, h) {
@@ -500,7 +354,6 @@ function drawGridOverlay(w, h) {
 
 function renderStats(src) {
   const heights = src.heights;
-  const wp = prepareWorldPainterMapping(src);
   let minY = 999;
   let maxY = -999;
   let sum = 0;
@@ -518,7 +371,6 @@ function renderStats(src) {
     `Qualité: ${QUALITY_LABEL[src.config.quality] || src.config.quality}`,
     `Seed: ${src.config.seed}`,
     `Sea level: Y${src.config.seaLevel}`,
-    `Sea Gray (WP): ${Math.round(wp.seaGray)}/255`,
     `Altitude min/max: Y${minY} -> Y${maxY}`,
     `Moyenne: Y${(sum / heights.length).toFixed(1)}`,
     `Terres: ${((land / heights.length) * 100).toFixed(1)}% | Océan: ${(100 - ((land / heights.length) * 100)).toFixed(1)}%`
@@ -534,7 +386,6 @@ function renderStats(src) {
 
 function renderSummary(cfg) {
   const world = WORLD_PRESETS[ui.worldType.value];
-  const wp = collectWorldPainterSettings();
   const rows = [
     `Type : ${world.label}`,
     `Taille : ${cfg.targetWidth}x${cfg.targetHeight}`,
@@ -543,8 +394,7 @@ function renderSummary(cfg) {
     `Côtes : ${ui.coastStyle.options[ui.coastStyle.selectedIndex].text}`,
     `Rivières : ${ui.riversLevel.options[ui.riversLevel.selectedIndex].text}`,
     `Qualité : ${QUALITY_LABEL[cfg.quality] || cfg.quality}`,
-    `Sea level : Y${cfg.seaLevel}`,
-    `WP import : Lowest Y${wp.minHeight} · Water Y${wp.waterLevel} · Highest Y${wp.maxHeight}`
+    `Sea level : Y${cfg.seaLevel}`
   ];
 
   ui.configSummary.innerHTML = '';
@@ -571,50 +421,6 @@ function renderHistogram(src) {
     histCtx.fillStyle = i < src.config.seaLevel ? '#3c78d8' : '#7fd38f';
     histCtx.fillRect(x, ui.histogram.height - h, Math.max(1, ui.histogram.width / 256), h);
   }
-}
-
-function renderWorldPainterCompatibility(src, wp) {
-  const rows = [];
-  const warnings = [];
-  const terrainStats = analyzeHeights(src.heights, wp.settings.waterLevel);
-  let grayMin = 255;
-  let grayMax = 0;
-  for (let i = 0; i < wp.gray8.length; i += 1) {
-    grayMin = Math.min(grayMin, wp.gray8[i]);
-    grayMax = Math.max(grayMax, wp.gray8[i]);
-  }
-  const grayRange = grayMax - grayMin;
-  const seaNeighbors = wp.mappedY.filter((v) => Math.abs(v - wp.settings.waterLevel) <= 1.5).length / wp.mappedY.length;
-
-  const withinBuildLimits = wp.settings.minHeight >= wp.settings.buildLimitMin && wp.settings.maxHeight <= wp.settings.buildLimitMax;
-  rows.push(`Compatible ${withinBuildLimits ? '✔' : '✖'}`);
-  rows.push(`Sea Level Locked ${Math.abs(grayToTerrainY(wp.seaGray, wp.settings.minHeight, wp.settings.maxHeight) - wp.settings.waterLevel) < 0.01 ? '✔' : '✖'}`);
-  rows.push(`Safe Range ${(wp.settings.maxHeight - wp.settings.minHeight) >= 35 ? '✔' : '✖'}`);
-  rows.push(`Terrain Compression ${grayRange >= 95 ? '✔' : '✖'}`);
-  rows.push(`No Clipping ${(terrainStats.min >= wp.settings.minHeight && terrainStats.max <= wp.settings.maxHeight) ? '✔' : '✖'}`);
-
-  if (grayRange < 65) warnings.push('Plage de gris trop faible : relief potentiellement écrasé.');
-  if (grayRange < 100) warnings.push('Contraste limité : augmenter la plage Min/Max ou changer de mode export.');
-  if (terrainStats.min <= wp.settings.minHeight + 0.5 || terrainStats.max >= wp.settings.maxHeight - 0.5) warnings.push('Clipping potentiel détecté (extrêmes proches des bornes export).');
-  if (seaNeighbors > 0.42) warnings.push('Trop de valeurs proches du sea level : risque de côtes plates / plages cassées.');
-  if (terrainStats.max > wp.settings.maxHeight - 2) warnings.push('Montagnes proches de la limite haute.');
-  if (terrainStats.min < wp.settings.waterLevel - 38) warnings.push('Océan très profond : vérifier le rendu WorldPainter.');
-
-  ui.wpCompatibility.innerHTML = '';
-  rows.forEach((text) => {
-    const li = document.createElement('li');
-    li.textContent = text;
-    ui.wpCompatibility.appendChild(li);
-  });
-  ui.wpWarning.textContent = warnings.length ? `Warnings: ${warnings.join(' · ')}` : 'Aucun warning critique.';
-}
-
-async function validateHeightmap() {
-  if (!state.preview) return;
-  const full = await awaitFullResolution();
-  const wp = prepareWorldPainterMapping(full);
-  renderWorldPainterCompatibility(full, wp);
-  setProgress('Validation WorldPainter terminée', 1);
 }
 
 function updateImpactNote() {
@@ -665,10 +471,9 @@ function awaitFullResolution() {
 async function exportPng() {
   if (!state.preview) return;
   const full = await awaitFullResolution();
-  const wp = prepareWorldPainterMapping(full);
   const image = new Uint8ClampedArray(full.width * full.height * 4);
   for (let i = 0; i < full.heights.length; i += 1) {
-    const g = wp.gray8[i];
+    const g = minecraftYToGray(full.heights[i], 8);
     const o = i * 4;
     image[o] = g; image[o + 1] = g; image[o + 2] = g; image[o + 3] = 255;
   }
@@ -677,7 +482,7 @@ async function exportPng() {
   offscreen.height = full.height;
   offscreen.getContext('2d').putImageData(new ImageData(image, full.width, full.height), 0, 0);
   const a = document.createElement('a');
-  a.download = `${filenameBase(full.config)}_worldpainter.png`;
+  a.download = `${filenameBase(full.config)}.png`;
   a.href = offscreen.toDataURL('image/png');
   a.click();
   renderPreview();
@@ -686,7 +491,6 @@ async function exportPng() {
 async function exportPresetJson() {
   if (!state.preview) return;
   const full = await awaitFullResolution();
-  const wp = prepareWorldPainterMapping(full);
   let minY = 999;
   let maxY = -999;
   for (let i = 0; i < full.heights.length; i += 1) {
@@ -707,32 +511,15 @@ async function exportPresetJson() {
       quality: ui.qualityMode.value
     },
     config: full.config,
-    worldPainterImport: {
-      lowestValue: wp.settings.minHeight,
-      waterLevel: wp.settings.waterLevel,
-      highestValue: wp.settings.maxHeight,
-      buildLimitMin: wp.settings.buildLimitMin,
-      buildLimitMax: wp.settings.buildLimitMax,
-      fromImage: 'Grayscale (8-bit)',
-      toMinecraft: 'Y Levels',
-      mapping: `${wp.settings.curve}/${wp.settings.exportMode}`,
-      worldPainterSafeMapping: wp.settings.safeMapping
-    },
     mapping: {
       minY,
       maxY,
       minecraftMinY: MC_MIN_Y,
       minecraftMaxY: MC_MAX_Y,
       seaLevel: full.config.seaLevel,
-      seaGray8: Math.round(wp.seaGray),
-      seaGray16: Math.round((wp.seaGray / 255) * 65535),
-      formula: 'gray = ((terrainY - exportMinY) / (exportMaxY - exportMinY)) * 255',
-      inverseFormula: 'terrainY = exportMinY + (gray / 255) * (exportMaxY - exportMinY)'
-    },
-    validation: {
-      approximateMinImportedY: Number(grayToTerrainY(0, wp.settings.minHeight, wp.settings.maxHeight).toFixed(2)),
-      approximateMaxImportedY: Number(grayToTerrainY(255, wp.settings.minHeight, wp.settings.maxHeight).toFixed(2)),
-      seaLevelLocked: Math.abs(grayToTerrainY(wp.seaGray, wp.settings.minHeight, wp.settings.maxHeight) - wp.settings.waterLevel) < 0.01
+      seaGray8: minecraftYToGray(full.config.seaLevel, 8),
+      seaGray16: minecraftYToGray(full.config.seaLevel, 16),
+      formula: 'gray = ((terrainY - minecraftMinY) / (minecraftMaxY - minecraftMinY)) * 255'
     }
   };
   downloadBlob('heightmap_export.json', new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
@@ -782,16 +569,6 @@ function bindSimpleInteractions() {
     });
   });
 
-  ['wp-min-height', 'wp-max-height', 'wp-water-level', 'wp-build-min', 'wp-build-max', 'wp-export-mode', 'wp-curve', 'wp-safe-mapping'].forEach((id) => {
-    const el = $(id);
-    const eventName = el.type === 'checkbox' ? 'change' : 'input';
-    el.addEventListener(eventName, () => {
-      if (state.preview) {
-        renderPreview();
-        renderSummary(state.preview.config);
-      }
-    });
-  });
 }
 
 ui.previewMode.addEventListener('change', renderPreview);
@@ -799,7 +576,6 @@ ui.showGrid.addEventListener('change', renderPreview);
 ui.zoom.addEventListener('input', () => { ui.canvas.style.transform = `scale(${ui.zoom.value})`; });
 ui.downloadPng.addEventListener('click', exportPng);
 ui.downloadJson.addEventListener('click', exportPresetJson);
-ui.validateHeightmap.addEventListener('click', validateHeightmap);
 
 (function enablePan() {
   let drag = false; let sx = 0; let sy = 0;

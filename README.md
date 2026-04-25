@@ -1,6 +1,6 @@
-# Heightmap Minecraft / WorldPainter Studio
+# Heightmap Minecraft Studio
 
-Générateur avancé de topographie Minecraft 1.21 orienté **import WorldPainter**.
+Générateur avancé de topographie Minecraft 1.21.
 
 ## Ce que fait ce projet
 
@@ -16,7 +16,7 @@ Pipeline appliqué (obligatoire) :
 6. rivières downhill jusqu'à la mer
 7. érosion (hydraulique + thermique + pente)
 8. détails locaux contextuels
-9. nettoyage anti-artefacts + WorldPainter safe
+9. nettoyage anti-artefacts
 10. quantification entière Minecraft
 11. conversion grayscale exportable
 
@@ -28,14 +28,13 @@ Pipeline appliqué (obligatoire) :
 
 ## Fonctionnalités principales
 
-- UI moderne avec sections: Terrain, Sea Level, Surface Layers, Mountains, Rivers, Coast, Export.
+- UI moderne avec sections: Terrain, Sea Level, Surface Layers, Mountains, Rivers, Coast.
 - Couches altitudinales dédiées (abysses, océan, shelf, plages, plaines, collines, montagnes, pics).
 - Génération de côtes crédibles (baies, caps, péninsules, falaises/plages).
 - Montagnes ridged + massifs + vallées + rivières downhill.
-- Nettoyage WorldPainter (anti micro-îles, anti-trous, anti-spikes incohérents).
+- Nettoyage terrain (anti micro-îles, anti-trous, anti-spikes incohérents).
 - Visualisations: grayscale, hillshade, contour lines, slope view, altitude heatmap.
 - Exports PNG 8-bit, PGM 16-bit, JSON preset.
-- Profil d'export **WorldPainter** (Lowest/Water/Highest, Build Limits, courbes, modes d'export, validation).
 
 ## Lancer
 
