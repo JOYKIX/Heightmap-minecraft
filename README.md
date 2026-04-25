@@ -8,19 +8,17 @@ Le moteur génère une vraie carte d'altitude surface-only, organisée par **cou
 
 Pipeline appliqué (obligatoire) :
 
-1. génération float
-2. construction masse terrestre
-3. attribution altitudinale
-4. génération côtière
-5. relief local
-6. montagnes
-7. vallées
-8. rivières
-9. érosion
-10. quantification Minecraft
-11. nettoyage
-12. conversion grayscale
-13. export
+1. génération de masse terrestre (asymétrique + fracturation côtière)
+2. altitudes principales (macro/meso/micro relief)
+3. couches altitudinales Minecraft
+4. chaînes montagneuses (ridged + logique tectonique)
+5. vallées cohérentes (convergence + drainage)
+6. rivières downhill jusqu'à la mer
+7. érosion (hydraulique + thermique + pente)
+8. détails locaux contextuels
+9. nettoyage anti-artefacts + WorldPainter safe
+10. quantification entière Minecraft
+11. conversion grayscale exportable
 
 ## Plage d'altitudes
 
