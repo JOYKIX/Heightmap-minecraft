@@ -29,6 +29,48 @@ export function cleanupHeights(heightFloat, config, landMask) {
   }
 }
 
+export function fillInlandSinks(heightFloat, config, landMask, passes = 2) {
+  const { width, height, seaLevel } = config;
+
+  for (let pass = 0; pass < passes; pass++) {
+    const src = new Float32Array(heightFloat);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (!landMask[i]) continue;
+        if (src[i] <= seaLevel + 1) continue;
+
+        let lowerNeighbors = 0;
+        let minNeighbor = Infinity;
+        let avgNeighbor = 0;
+        let count = 0;
+
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            if (!ox && !oy) continue;
+            const ni = (y + oy) * width + (x + ox);
+            if (!landMask[ni]) continue;
+            const n = src[ni];
+            avgNeighbor += n;
+            count++;
+            if (n < minNeighbor) minNeighbor = n;
+            if (n < src[i] - 0.5) lowerNeighbors++;
+          }
+        }
+
+        if (count < 3) continue;
+        avgNeighbor /= count;
+        const enclosed = lowerNeighbors === 0;
+        const pitDepth = avgNeighbor - src[i];
+        if (enclosed && pitDepth > 2.2) {
+          const raiseTo = minNeighbor + Math.min(1.8, pitDepth * 0.55);
+          heightFloat[i] = Math.max(src[i], raiseTo);
+        }
+      }
+    }
+  }
+}
+
 export function quantizeToMinecraftY(heightFloat, minY, maxY) {
   const yInt = new Uint16Array(heightFloat.length);
   for (let i = 0; i < heightFloat.length; i++) {

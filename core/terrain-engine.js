@@ -12,7 +12,7 @@ import { computeDistanceFields, shapeOceanAndCoast } from './coast.js';
 import { generateBiomeMap, generateClimateMaps, calculateBiomeStats, getBiomeProfileByIndex } from './biomes.js';
 import { carveRivers } from './rivers.js';
 import { applyAdvancedErosion } from './erosion.js';
-import { cleanupHeights, quantizeToMinecraftY, validateHeightmap } from './cleanup.js';
+import { cleanupHeights, fillInlandSinks, quantizeToMinecraftY, validateHeightmap } from './cleanup.js';
 import { heightToGrayscale, minecraftYToGray } from './worldpainter.js';
 
 export function generateTerrain(config) {
@@ -22,6 +22,7 @@ export function generateTerrain(config) {
 
   mark('1. Créer une structure globale');
   const finalConfig = { ...config };
+  const tuning = resolveGenerationTuning(finalConfig);
 
   let landPotential;
   let cleanMask;
@@ -85,10 +86,11 @@ export function generateTerrain(config) {
   shapeOceanAndCoast(baseHeight, cleanMask, distanceToLand, finalConfig.seaLevel);
 
   mark('15. Érosion avancée (thermal + hydraulic simplifiée)');
-  applyAdvancedErosion(baseHeight, width, height, cleanMask, 2, 0.2);
+  applyAdvancedErosion(baseHeight, width, height, cleanMask, tuning.erosionIterations, tuning.erosionStrength);
 
   mark('16. Nettoyage final');
   cleanupHeights(baseHeight, finalConfig, cleanMask);
+  fillInlandSinks(baseHeight, finalConfig, cleanMask, tuning.sinkFillPasses);
 
   mark('17. Quantification Minecraft Y');
   const yInt = quantizeToMinecraftY(baseHeight, finalConfig.minY, finalConfig.maxY);
@@ -132,6 +134,8 @@ export function generateTerrain(config) {
     biomes: biomeStats.byBiome,
     biomeWarnings: biomeStats.warnings,
     riverCount: riverStats?.rivers ?? 0,
+    attemptedRiverSources: riverStats?.attemptedSources ?? 0,
+    targetRiverSources: riverStats?.targetSources ?? 0,
     generationMs: performance.now() - started,
     worldPainterCompatible: validation.worldPainterCompatible,
     pipelineSteps: steps
@@ -153,6 +157,25 @@ export function generateTerrain(config) {
     yInt,
     grayscale,
     stats
+  };
+}
+
+function resolveGenerationTuning(config) {
+  const quality = config.quality ?? 'balanced';
+  const relief = config.reliefStyle ?? 'balanced';
+
+  const qualityTuning = {
+    low: { erosionIterations: 1, erosionStrength: 0.18, sinkFillPasses: 1 },
+    balanced: { erosionIterations: 2, erosionStrength: 0.2, sinkFillPasses: 2 },
+    high: { erosionIterations: 3, erosionStrength: 0.22, sinkFillPasses: 2 },
+    ultra: { erosionIterations: 4, erosionStrength: 0.24, sinkFillPasses: 3 }
+  }[quality] ?? { erosionIterations: 2, erosionStrength: 0.2, sinkFillPasses: 2 };
+
+  const reliefBoost = { gentle: 0.88, balanced: 1, rugged: 1.12 }[relief] ?? 1;
+  return {
+    erosionIterations: qualityTuning.erosionIterations,
+    erosionStrength: qualityTuning.erosionStrength * reliefBoost,
+    sinkFillPasses: qualityTuning.sinkFillPasses
   };
 }
 
