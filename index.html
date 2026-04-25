@@ -97,7 +97,6 @@
           <div class="actions-under-main">
             <button id="new-seed" class="secondary">Générer une nouvelle seed</button>
             <button id="download-png" class="secondary">Télécharger PNG</button>
-            <button id="validate-heightmap" class="secondary">Validate Heightmap</button>
             <button id="download-json" class="secondary">Exporter preset JSON</button>
           </div>
 
@@ -154,55 +153,6 @@
           </label>
         </details>
 
-        <section class="card">
-          <h2>WorldPainter Export</h2>
-          <div class="row two">
-            <label>Min Minecraft Height
-              <input id="wp-min-height" type="number" min="-64" max="319" step="1" value="56" />
-            </label>
-            <label>Max Minecraft Height
-              <input id="wp-max-height" type="number" min="-64" max="319" step="1" value="106" />
-            </label>
-          </div>
-
-          <label>Water Level
-            <input id="wp-water-level" type="number" min="-64" max="319" step="1" value="64" />
-          </label>
-
-          <div class="row two">
-            <label>Build Limit Min
-              <input id="wp-build-min" type="number" min="-64" max="319" step="1" value="-64" />
-            </label>
-            <label>Build Limit Max
-              <input id="wp-build-max" type="number" min="-64" max="319" step="1" value="319" />
-            </label>
-          </div>
-
-          <label>Mode Export
-            <select id="wp-export-mode">
-              <option value="balanced" selected>Minecraft Balanced</option>
-              <option value="safe">WorldPainter Safe</option>
-              <option value="realistic">Realistic Terrain</option>
-              <option value="mountains">Large Mountains</option>
-              <option value="island">Island Optimized</option>
-              <option value="pokemon">Pokémon Region Optimized</option>
-            </select>
-          </label>
-
-          <label>Altitude Curve
-            <select id="wp-curve">
-              <option value="linear" selected>Linear</option>
-              <option value="terrain">Terrain Optimized</option>
-              <option value="mountain">Mountain Enhanced</option>
-              <option value="flatland">Flatland Enhanced</option>
-              <option value="coast">Coast Optimized</option>
-            </select>
-          </label>
-
-          <label class="check"><input id="wp-safe-mapping" type="checkbox" checked /> WorldPainter Safe Mapping</label>
-          <p id="sea-gray-info" class="hint"></p>
-          <p class="hint">Mapping WorldPainter: From Image → To Minecraft (Lowest/Water/Highest Value).</p>
-        </section>
       </aside>
 
       <main class="center">
@@ -214,7 +164,6 @@
               <option value="contour-preview">Contours</option>
               <option value="slope-preview">Pentes</option>
               <option value="altitude-heatmap">Heatmap</option>
-              <option value="wp-import-preview">Approximate WorldPainter Import Result</option>
             </select>
           </label>
           <label>Zoom <input id="zoom" type="range" min="1" max="6" step="0.1" value="1" /></label>
@@ -234,12 +183,6 @@
         <section class="card">
           <h2>Statistiques</h2>
           <ul id="stats"></ul>
-        </section>
-
-        <section class="card">
-          <h2>WorldPainter Compatibility</h2>
-          <ul id="wp-compatibility"></ul>
-          <p id="wp-warning" class="hint impact"></p>
         </section>
 
         <section class="card">
