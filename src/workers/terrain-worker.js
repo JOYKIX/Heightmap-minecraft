@@ -5,6 +5,9 @@ self.onmessage = (event) => {
   if (type !== 'generate') return;
 
   try {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Configuration absente ou invalide.');
+    }
     const terrain = generateTerrain(payload, (step, progress) => {
       self.postMessage({ type: 'progress', payload: { step, progress } });
     });
@@ -20,6 +23,9 @@ self.onmessage = (event) => {
       }
     });
   } catch (error) {
-    self.postMessage({ type: 'error', payload: { message: error.message } });
+    const message = error instanceof Error ? error.message : 'Erreur inconnue du worker';
+    // eslint-disable-next-line no-console
+    console.error('[terrain-worker] error', error);
+    self.postMessage({ type: 'error', payload: { message } });
   }
 };

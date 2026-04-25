@@ -9,9 +9,16 @@ export function updateStatsPanel(state) {
   const wp = document.getElementById('wp-compatibility');
   const summary = document.getElementById('config-summary');
 
-  const min = Math.min(...terrain.heightMap);
-  const max = Math.max(...terrain.heightMap);
-  const avg = terrain.heightMap.reduce((acc, value) => acc + value, 0) / terrain.heightMap.length;
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  let total = 0;
+  for (let i = 0; i < terrain.heightMap.length; i += 1) {
+    const value = terrain.heightMap[i];
+    if (value < min) min = value;
+    if (value > max) max = value;
+    total += value;
+  }
+  const avg = terrain.heightMap.length > 0 ? total / terrain.heightMap.length : 0;
   stats.innerHTML = `<li>Min Y: ${min.toFixed(0)}</li><li>Max Y: ${max.toFixed(0)}</li><li>Moyenne: ${avg.toFixed(1)}</li>`;
 
   biomeResults.innerHTML = BIOME_PROFILES.map((biome, i) => `<li>${biome.name}: ${((terrain.biomeCounts[i] / terrain.biomeMap.length) * 100).toFixed(1)}%</li>`).join('');
