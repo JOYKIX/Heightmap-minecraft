@@ -3,25 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Minecraft / WorldPainter Heightmap Studio</title>
+    <title>Minecraft Surface Heightmap Lab</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="shell">
       <aside class="panel left">
-        <h1>Heightmap Studio</h1>
-        <p class="subtitle">Pipeline Minecraft + WorldPainter orienté topographie réelle.</p>
+        <h1>Surface Heightmap Lab</h1>
+        <p class="subtitle">Génération surface-only Minecraft / WorldPainter (aucune couche underground).</p>
 
         <section class="card">
-          <h2>Génération</h2>
+          <h2>Projet</h2>
           <div class="row two">
-            <label>Largeur <input id="width" type="number" min="256" max="2048" step="256" value="1024" /></label>
-            <label>Hauteur <input id="height" type="number" min="256" max="2048" step="256" value="1024" /></label>
+            <label>Largeur <input id="width" type="number" min="256" max="4096" step="256" value="1024" /></label>
+            <label>Hauteur <input id="height" type="number" min="256" max="4096" step="256" value="1024" /></label>
           </div>
-          <label>Seed <input id="seed" type="text" value="realistic-island-01" /></label>
-          <label>Preset
-            <select id="preset"></select>
-          </label>
+          <label>Seed <input id="seed" type="text" value="minecraft-surface" /></label>
+          <label>Preset <select id="preset"></select></label>
           <label class="check"><input id="safe-mode" type="checkbox" checked /> WorldPainter Safe</label>
           <button id="generate">Générer le terrain</button>
           <div class="progress-wrap"><div id="progress"></div></div>
@@ -29,39 +27,39 @@
         </section>
 
         <section class="card">
-          <h2>Terrain & Biomes</h2>
-          <label>Sea level Y <input id="sea-level" type="range" min="48" max="96" value="64" /><span id="sea-level-val"></span></label>
-          <label>Terrain scale <input id="terrain-scale" type="range" min="0.4" max="2.4" step="0.01" value="1.25" /><span id="terrain-scale-val"></span></label>
-          <label>Landmass frequency <input id="landmass-frequency" type="range" min="0.2" max="2" step="0.01" value="0.85" /><span id="landmass-frequency-val"></span></label>
-          <label>Continent roughness <input id="continent-roughness" type="range" min="0" max="1" step="0.01" value="0.58" /><span id="continent-roughness-val"></span></label>
-          <label>Coastline complexity <input id="coastline-complexity" type="range" min="0" max="1" step="0.01" value="0.65" /><span id="coastline-complexity-val"></span></label>
-          <label>Island asymmetry <input id="island-asymmetry" type="range" min="0" max="1" step="0.01" value="0.55" /><span id="island-asymmetry-val"></span></label>
-          <label>Archipelago factor <input id="archipelago-factor" type="range" min="0" max="1" step="0.01" value="0.3" /><span id="archipelago-factor-val"></span></label>
+          <h2>Masse terrestre & côtes</h2>
+          <label>Sea level (Y) <input id="sea-level" type="range" min="48" max="96" value="64" /><span id="sea-level-val"></span></label>
+          <label>Island size <input id="island-size" type="range" min="0.3" max="1.6" step="0.01" value="1" /><span id="island-size-val"></span></label>
+          <label>Landmass scale <input id="landmass-scale" type="range" min="0.2" max="2" step="0.01" value="0.9" /><span id="landmass-scale-val"></span></label>
+          <label>Landmass density <input id="landmass-density" type="range" min="0" max="1" step="0.01" value="0.56" /><span id="landmass-density-val"></span></label>
+          <label>Coastline complexity <input id="coastline-complexity" type="range" min="0" max="1" step="0.01" value="0.68" /><span id="coastline-complexity-val"></span></label>
+          <label>Coast fragmentation <input id="coast-fragmentation" type="range" min="0" max="1" step="0.01" value="0.42" /><span id="coast-fragmentation-val"></span></label>
+          <label>Island asymmetry <input id="island-asymmetry" type="range" min="0" max="1" step="0.01" value="0.52" /><span id="island-asymmetry-val"></span></label>
+          <label>Archipelago amount <input id="archipelago-amount" type="range" min="0" max="1" step="0.01" value="0.34" /><span id="archipelago-amount-val"></span></label>
+          <label>Coast erosion <input id="coast-erosion" type="range" min="0" max="1" step="0.01" value="0.46" /><span id="coast-erosion-val"></span></label>
         </section>
 
         <section class="card">
-          <h2>Montagnes, Vallées, Rivières</h2>
+          <h2>Relief de surface</h2>
           <label>Mountain intensity <input id="mountain-intensity" type="range" min="0" max="1" step="0.01" value="0.72" /><span id="mountain-intensity-val"></span></label>
-          <label>Valley strength <input id="valley-strength" type="range" min="0" max="1" step="0.01" value="0.55" /><span id="valley-strength-val"></span></label>
-          <label>River density <input id="river-density" type="range" min="0" max="1" step="0.01" value="0.42" /><span id="river-density-val"></span></label>
-          <label>River depth <input id="river-depth" type="range" min="1" max="18" step="1" value="7" /><span id="river-depth-val"></span></label>
-          <label>Erosion amount <input id="erosion-amount" type="range" min="0" max="1" step="0.01" value="0.45" /><span id="erosion-amount-val"></span></label>
-          <label>Terrain sharpness <input id="terrain-sharpness" type="range" min="0.5" max="2.5" step="0.01" value="1.3" /><span id="terrain-sharpness-val"></span></label>
-          <label>Beach width <input id="beach-width" type="range" min="1" max="12" step="1" value="5" /><span id="beach-width-val"></span></label>
-          <label>Cliff chance <input id="cliff-chance" type="range" min="0" max="1" step="0.01" value="0.38" /><span id="cliff-chance-val"></span></label>
+          <label>Ridge sharpness <input id="ridge-sharpness" type="range" min="0.5" max="3" step="0.01" value="1.65" /><span id="ridge-sharpness-val"></span></label>
+          <label>Alpine effect <input id="alpine-effect" type="range" min="0" max="1" step="0.01" value="0.55" /><span id="alpine-effect-val"></span></label>
+          <label>Massif size <input id="massif-size" type="range" min="0.3" max="2.5" step="0.01" value="1.1" /><span id="massif-size-val"></span></label>
+          <label>Peak amount <input id="peak-amount" type="range" min="0" max="1" step="0.01" value="0.4" /><span id="peak-amount-val"></span></label>
+          <label>Valley strength <input id="valley-strength" type="range" min="0" max="1" step="0.01" value="0.58" /><span id="valley-strength-val"></span></label>
+          <label>River density <input id="river-density" type="range" min="0" max="1" step="0.01" value="0.45" /><span id="river-density-val"></span></label>
+          <label>Erosion strength <input id="erosion-strength" type="range" min="0" max="1" step="0.01" value="0.48" /><span id="erosion-strength-val"></span></label>
+          <label>Terrain sharpness <input id="terrain-sharpness" type="range" min="0.5" max="2.5" step="0.01" value="1.28" /><span id="terrain-sharpness-val"></span></label>
+          <label>Plateau amount <input id="plateau-amount" type="range" min="0" max="1" step="0.01" value="0.28" /><span id="plateau-amount-val"></span></label>
+          <label>Cliff amount <input id="cliff-amount" type="range" min="0" max="1" step="0.01" value="0.37" /><span id="cliff-amount-val"></span></label>
+          <label>Terrain variation <input id="terrain-variation" type="range" min="0" max="1" step="0.01" value="0.62" /><span id="terrain-variation-val"></span></label>
         </section>
 
         <section class="card">
           <h2>Export</h2>
-          <label>Bit depth
-            <select id="bit-depth">
-              <option value="8" selected>8-bit PNG grayscale</option>
-              <option value="16">16-bit raw + PNG preview</option>
-            </select>
-          </label>
-          <button id="download-png">Exporter PNG WorldPainter</button>
-          <button id="download-json">Exporter JSON preset</button>
-          <button id="download-raw16">Exporter RAW16 JSON</button>
+          <button id="download-png">Exporter PNG 8-bit grayscale</button>
+          <button id="download-pgm16">Exporter PGM 16-bit grayscale</button>
+          <button id="download-json">Exporter preset JSON</button>
         </section>
       </aside>
 
@@ -70,11 +68,11 @@
           <label>Preview
             <select id="preview-mode">
               <option value="grayscale">Grayscale</option>
-              <option value="terrain">Colored terrain</option>
               <option value="hillshade">Hillshade</option>
-              <option value="contour">Contour lines</option>
-              <option value="water">Water level</option>
-              <option value="biome">Biome visualization</option>
+              <option value="topographic">Topographic</option>
+              <option value="biome-coloring">Biome coloring</option>
+              <option value="slope-preview">Slope preview</option>
+              <option value="contour-preview">Contour preview</option>
             </select>
           </label>
           <label>Zoom <input id="zoom" type="range" min="1" max="6" step="0.1" value="1" /></label>
@@ -87,13 +85,13 @@
 
       <aside class="panel right">
         <section class="card">
-          <h2>Statistiques</h2>
+          <h2>Statistiques & mapping</h2>
           <ul id="stats"></ul>
         </section>
         <section class="card">
           <h2>Distribution altitudes</h2>
           <canvas id="histogram" width="320" height="140"></canvas>
-          <p class="hint">Bandes Minecraft: plage Y62-68, plaines Y68-85, collines Y85-120, montagnes Y120-200.</p>
+          <p class="hint">Surface-only : océan, côtes, plaines, collines, montagnes, pics.</p>
         </section>
       </aside>
     </div>
