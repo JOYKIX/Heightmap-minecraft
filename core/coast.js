@@ -1,33 +1,92 @@
 export function computeDistanceFields(landMask, width, height) {
-  const distanceToCoast = new Uint16Array(width * height);
-  const distanceToLand = new Uint16Array(width * height);
+  const total = width * height;
+  const distanceToCoast = new Uint16Array(total);
+  const distanceToLand = new Uint16Array(total);
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
+  const INF = 65535;
+  for (let i = 0; i < total; i++) {
+    distanceToCoast[i] = INF;
+    distanceToLand[i] = INF;
+  }
+
+  const q = new Int32Array(total);
+
+  // Seed land distances from coastline ocean cells
+  let head = 0;
+  let tail = 0;
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
       const i = y * width + x;
       const isLand = landMask[i] === 1;
-      let best = 9999;
-      for (let oy = -28; oy <= 28; oy++) {
-        const yy = y + oy;
-        if (yy < 0 || yy >= height) continue;
-        for (let ox = -28; ox <= 28; ox++) {
-          const xx = x + ox;
-          if (xx < 0 || xx >= width) continue;
-          const j = yy * width + xx;
-          const otherLand = landMask[j] === 1;
-          if (isLand !== otherLand) {
-            const d = Math.abs(ox) + Math.abs(oy);
-            if (d < best) best = d;
+      let borderOther = false;
+      for (let oy = -1; oy <= 1 && !borderOther; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          if (!ox && !oy) continue;
+          const ni = (y + oy) * width + (x + ox);
+          if ((landMask[ni] === 1) !== isLand) {
+            borderOther = true;
+            break;
           }
         }
       }
-      if (best === 9999) best = 28;
-      if (isLand) distanceToCoast[i] = best;
-      else distanceToLand[i] = best;
+
+      if (!borderOther) continue;
+      if (isLand) {
+        distanceToCoast[i] = 0;
+      } else {
+        distanceToLand[i] = 0;
+      }
+      q[tail++] = i;
     }
   }
 
+  // Multi-source BFS for each medium
+  propagateDistance(q, head, tail, distanceToCoast, landMask, width, height, 1);
+  propagateDistance(q, head, tail, distanceToLand, landMask, width, height, 0);
+
+  // Cap values for stability
+  for (let i = 0; i < total; i++) {
+    if (distanceToCoast[i] === INF) distanceToCoast[i] = 0;
+    if (distanceToLand[i] === INF) distanceToLand[i] = 0;
+  }
+
   return { distanceToCoast, distanceToLand };
+}
+
+function propagateDistance(queue, head0, tail0, outDistance, landMask, width, height, medium) {
+  const INF = 65535;
+  let head = 0;
+  let tail = 0;
+
+  for (let i = head0; i < tail0; i++) {
+    const idx = queue[i];
+    if ((landMask[idx] === 1 ? 1 : 0) === medium && outDistance[idx] === 0) {
+      queue[tail++] = idx;
+    }
+  }
+
+  while (head < tail) {
+    const idx = queue[head++];
+    const x = idx % width;
+    const y = (idx / width) | 0;
+    const current = outDistance[idx];
+
+    for (let oy = -1; oy <= 1; oy++) {
+      for (let ox = -1; ox <= 1; ox++) {
+        if (!ox && !oy) continue;
+        const xx = x + ox;
+        const yy = y + oy;
+        if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+        const ni = yy * width + xx;
+        if ((landMask[ni] === 1 ? 1 : 0) !== medium) continue;
+        const step = ox && oy ? 2 : 1;
+        const nd = current + step;
+        if (nd >= outDistance[ni] || outDistance[ni] !== INF && nd >= outDistance[ni]) continue;
+        outDistance[ni] = nd;
+        queue[tail++] = ni;
+      }
+    }
+  }
 }
 
 export function shapeOceanAndCoast(heightFloat, landMask, distanceToLand, seaLevel) {
@@ -35,22 +94,23 @@ export function shapeOceanAndCoast(heightFloat, landMask, distanceToLand, seaLev
     if (landMask[i]) continue;
     const d = distanceToLand[i];
 
-    if (d <= 2) {
-      // bord d'eau / transition
-      heightFloat[i] = clamp(heightFloat[i], seaLevel - 2, seaLevel - 1);
-    } else if (d <= 6) {
-      // plateau côtier Y58-63
-      const t = (d - 2) / 4;
-      heightFloat[i] = lerp(seaLevel - 1, 58, t);
-    } else if (d <= 14) {
-      // océan moyen Y35-50
-      const t = (d - 6) / 8;
-      heightFloat[i] = lerp(58, 45, t);
+    if (d <= 3) {
+      // plage/lagon
+      const t = d / 3;
+      heightFloat[i] = lerp(seaLevel - 1, seaLevel - 4, t);
+    } else if (d <= 11) {
+      // plateau continental
+      const t = (d - 3) / 8;
+      heightFloat[i] = lerp(seaLevel - 4, seaLevel - 16, t);
+    } else if (d <= 28) {
+      // pente océanique
+      const t = (d - 11) / 17;
+      heightFloat[i] = lerp(seaLevel - 16, seaLevel - 45, t);
     } else {
-      // océan profond Y20-35 + fosses légères
-      const t = Math.min(1, (d - 14) / 20);
-      heightFloat[i] = lerp(45, 24, t);
-      const trench = ((i * 2654435761) >>> 0) % 97 === 0 ? 4 : 0;
+      // grands fonds + fosse ponctuelle
+      const t = Math.min(1, (d - 28) / 52);
+      heightFloat[i] = lerp(seaLevel - 45, seaLevel - 68, t);
+      const trench = ((i * 1103515245 + 12345) >>> 0) % 101 === 0 ? 6 : 0;
       heightFloat[i] -= trench;
     }
 
@@ -60,8 +120,4 @@ export function shapeOceanAndCoast(heightFloat, landMask, distanceToLand, seaLev
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
-}
-
-function clamp(v, min, max) {
-  return Math.max(min, Math.min(max, v));
 }

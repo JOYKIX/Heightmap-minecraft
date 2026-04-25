@@ -40,7 +40,7 @@ export function applyPresetToConfig(config, presetKey) {
 
 export function initPreviewModes() {
   const select = document.getElementById('previewMode');
-  ['grayscale', 'biome', 'hillshade', 'heatmap'].forEach((mode) => {
+  ['grayscale', 'biome', 'hillshade', 'heatmap', 'structure', 'ridge', 'moisture', 'direction', 'basin', 'slope', 'river', 'coast-distance'].forEach((mode) => {
     const opt = document.createElement('option');
     opt.value = mode;
     opt.textContent = mode;
