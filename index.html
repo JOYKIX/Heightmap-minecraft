@@ -35,6 +35,38 @@
           <input id="river" type="number" min="0" max="30" step="1" value="8" />
         </label>
         <label>
+          Sea level (Y)
+          <input id="sea-level" type="number" min="0" max="255" step="1" value="64" />
+        </label>
+        <label>
+          Min Y export
+          <input id="min-y" type="number" min="0" max="255" step="1" value="0" />
+        </label>
+        <label>
+          Max Y export
+          <input id="max-y" type="number" min="1" max="255" step="1" value="255" />
+        </label>
+        <label>
+          Bit depth sortie
+          <select id="bit-depth">
+            <option value="8" selected>8-bit (PNG standard)</option>
+            <option value="6">6-bit (64 niveaux)</option>
+            <option value="5">5-bit (32 niveaux)</option>
+          </select>
+        </label>
+        <label>
+          <input id="quantize" type="checkbox" checked />
+          Minecraft Layer Quantization
+        </label>
+        <label>
+          <input id="dither" type="checkbox" checked />
+          Dithering léger (quantization)
+        </label>
+        <label>
+          <input id="safe-mode" type="checkbox" checked />
+          WorldPainter Safe Import
+        </label>
+        <label>
           Seed
           <input id="seed" type="text" value="minecraft-heightmap" />
         </label>
