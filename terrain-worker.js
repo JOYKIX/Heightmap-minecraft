@@ -7,6 +7,7 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const smoothstep = (t) => t * t * (3 - 2 * t);
 const fract = (v) => v - Math.floor(v);
+const RADIAL_EPSILON = 0.0001;
 
 function hashString(str) {
   let h = 2166136261;
@@ -89,35 +90,61 @@ function normalizedGradient(x, y, width, height, angle) {
 }
 
 function buildLandmass(x, y, width, height, cfg, seedNum) {
-  const nx = x / width - 0.5;
-  const ny = y / height - 0.5;
-  const angle = Math.atan2(ny, nx);
+  const nx = x / Math.max(1, width - 1) - 0.5;
+  const ny = y / Math.max(1, height - 1) - 0.5;
 
-  const warpA = (fbm(nx * 2.6, ny * 2.6, seedNum + 13, qOct(4, cfg.quality), 2.15, 0.54) - 0.5) * (0.58 + cfg.coastlineComplexity * 0.45);
-  const warpB = (fbm(nx * 4.9, ny * 4.9, seedNum + 31, qOct(3, cfg.quality), 2.22, 0.5) - 0.5) * (0.24 + cfg.coastFragmentation * 0.34);
+  // Décaler le centre pour éviter un pivot exact (0,0), source de singularités et d'étoiles.
+  const centerOffsetX = (fbm(3.17, 8.41, seedNum + 901, 3, 2.11, 0.53) - 0.5) * 0.12;
+  const centerOffsetY = (fbm(9.73, 2.67, seedNum + 907, 3, 2.09, 0.51) - 0.5) * 0.12;
+  const cx = nx - centerOffsetX;
+  const cy = ny - centerOffsetY;
 
-  const eX = nx * (1.06 + cfg.islandAsymmetry * 0.72) + warpA * 0.52;
-  const eY = ny * (0.94 - cfg.islandAsymmetry * 0.35) + warpB * 0.42;
+  // Domain warp non centré pour casser la symétrie radiale/polaire.
+  const preWarpX = (fbm(cx * 2.2 + 11.3, cy * 2.2 - 7.1, seedNum + 3, qOct(4, cfg.quality), 2.07, 0.54) - 0.5) * (0.52 + cfg.coastlineComplexity * 0.45);
+  const preWarpY = (fbm(cx * 2.2 - 5.2, cy * 2.2 + 13.8, seedNum + 17, qOct(4, cfg.quality), 2.12, 0.53) - 0.5) * (0.48 + cfg.coastFragmentation * 0.4);
 
-  const radial = Math.hypot(eX, eY) / Math.max(0.2, cfg.islandSize);
+  const warpA = (fbm((cx + preWarpX * 0.5) * 2.6, (cy + preWarpY * 0.5) * 2.6, seedNum + 13, qOct(4, cfg.quality), 2.15, 0.54) - 0.5) * (0.58 + cfg.coastlineComplexity * 0.45);
+  const warpB = (fbm((cx - preWarpY * 0.4) * 4.9, (cy + preWarpX * 0.4) * 4.9, seedNum + 31, qOct(3, cfg.quality), 2.22, 0.5) - 0.5) * (0.24 + cfg.coastFragmentation * 0.34);
 
-  const peninsulas = Math.sin(angle * 2.5 + seedNum * 0.0011) * 0.14
-    + Math.sin(angle * 5.6 + seedNum * 0.0019) * 0.08
-    + Math.sin(angle * 9.2 + seedNum * 0.0033) * 0.04;
+  const eX = cx * (1.06 + cfg.islandAsymmetry * 0.72) + preWarpX * 0.32 + warpA * 0.52;
+  const eY = cy * (0.94 - cfg.islandAsymmetry * 0.35) + preWarpY * 0.32 + warpB * 0.42;
 
-  const continental = fbm((nx + warpA * 0.35) * 1.9 * cfg.landmassScale, (ny + warpB * 0.35) * 1.9 * cfg.landmassScale, seedNum + 79, qOct(6, cfg.quality), 2.0, 0.53);
-  const secondary = fbm(nx * 5.5, ny * 5.5, seedNum + 87, qOct(4, cfg.quality), 2.15, 0.48);
-  const fracture = ridged(nx * 11.5, ny * 11.5, seedNum + 109, 1.85, qOct(4, cfg.quality));
+  const dist = Math.max(Math.hypot(eX, eY), RADIAL_EPSILON);
+  const radial = dist / Math.max(0.2, cfg.islandSize);
 
-  const archipelago = fbm(nx * 9.8, ny * 9.8, seedNum + 137, qOct(5, cfg.quality), 2.2, 0.48) * cfg.archipelagoAmount;
+  // Variations directionnelles sans atan2: pas de couture polaire ni interpolation angulaire visible.
+  const dirAngle1 = seedNum * 0.00073 + 0.9;
+  const dirAngle2 = seedNum * 0.00111 + 2.3;
+  const dirAngle3 = seedNum * 0.00157 + 4.8;
+  const dir1 = eX * Math.cos(dirAngle1) + eY * Math.sin(dirAngle1);
+  const dir2 = eX * Math.cos(dirAngle2) + eY * Math.sin(dirAngle2);
+  const dir3 = eX * Math.cos(dirAngle3) + eY * Math.sin(dirAngle3);
+  const directionalBreak = (fbm(dir1 * 6.8 + 0.31, dir2 * 6.2 - 0.17, seedNum + 63, qOct(4, cfg.quality), 2.13, 0.5) - 0.5) * 0.19
+    + (fbm(dir2 * 9.4 - 0.29, dir3 * 8.8 + 0.27, seedNum + 67, qOct(3, cfg.quality), 2.21, 0.48) - 0.5) * 0.11;
+
+  const continental = fbm((cx + warpA * 0.35) * 1.9 * cfg.landmassScale, (cy + warpB * 0.35) * 1.9 * cfg.landmassScale, seedNum + 79, qOct(6, cfg.quality), 2.0, 0.53);
+  const secondary = fbm((cx + preWarpX * 0.2) * 5.5, (cy + preWarpY * 0.2) * 5.5, seedNum + 87, qOct(4, cfg.quality), 2.15, 0.48);
+  const fracture = ridged((cx + warpA * 0.15) * 11.5, (cy + warpB * 0.15) * 11.5, seedNum + 109, 1.85, qOct(4, cfg.quality));
+
+  const archipelago = fbm((cx - warpB * 0.2) * 9.8, (cy + warpA * 0.2) * 9.8, seedNum + 137, qOct(5, cfg.quality), 2.2, 0.48) * cfg.archipelagoAmount;
   const coastlineBreak = (fracture - 0.5) * cfg.coastFragmentation * 0.42;
+  const irregularRadialNoise = (fbm(cx * 3.4 + preWarpX, cy * 3.4 + preWarpY, seedNum + 149, qOct(4, cfg.quality), 2.17, 0.5) - 0.5) * 0.24;
 
-  const edge = radial
-    - peninsulas
+  let edge = radial
+    - directionalBreak
+    - irregularRadialNoise
     + (0.5 - continental) * (0.95 - cfg.landmassDensity * 0.32)
     + (0.5 - secondary) * 0.28
     + coastlineBreak
     + (0.53 - archipelago) * 0.22;
+
+  // Correction spéciale du centre: éviter toute structure radiale résiduelle.
+  const centerBlend = 1 - smoothstep(clamp((dist - 0.11) / 0.18, 0, 1));
+  if (centerBlend > 0) {
+    const centerNoise = fbm(cx * 13.5 + 21.7, cy * 13.5 - 18.4, seedNum + 173, qOct(4, cfg.quality), 2.25, 0.46);
+    const centerTarget = 0.58 + (0.5 - centerNoise) * 0.35;
+    edge = lerp(edge, centerTarget, centerBlend * 0.78);
+  }
 
   return clamp(1 - smoothstep(clamp(edge * 1.42, 0, 1)), 0, 1);
 }
