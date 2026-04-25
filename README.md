@@ -45,3 +45,12 @@ python3 -m http.server 8000
 ```
 
 Puis ouvrir `http://localhost:8000`.
+
+## Système de biomes (nouveau)
+
+La génération inclut désormais un pipeline dédié biomes: `landMask`, `distanceToCoast`, `baseHeight`, `moistureMap`, `temperatureMap`, `biomeMap`, `biomeInfluenceMap`, `terrainHeight`.
+
+- profils biome centralisés dans `biome-profiles.js`
+- mix de biomes configurable (actifs, % cible, lock, randomize, rééquilibrage)
+- influence réelle des biomes sur altitude, rivières, côtes et érosion
+- preview `Biome Map` + stats cible/réel
