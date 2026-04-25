@@ -128,8 +128,8 @@ canvas { image-rendering: pixelated; display: block; transform-origin: top left;
 .progress-wrap { width: 100%; height: 10px; background: #0a1020; border-radius: 999px; border: 1px solid var(--line); margin-top: .35rem; }
 #progress { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 999px; transition: width .2s; }
 
-#stats, #config-summary { list-style: none; padding-left: 0; margin: 0; display: grid; gap: .35rem; font-size: .87rem; }
-#stats li, #config-summary li { padding: .45rem .52rem; background: rgba(12, 18, 31, .78); border-radius: 9px; border: 1px solid rgba(113, 128, 159, .21); }
+#stats, #config-summary, #wp-compatibility { list-style: none; padding-left: 0; margin: 0; display: grid; gap: .35rem; font-size: .87rem; }
+#stats li, #config-summary li, #wp-compatibility li { padding: .45rem .52rem; background: rgba(12, 18, 31, .78); border-radius: 9px; border: 1px solid rgba(113, 128, 159, .21); }
 .hint { margin: .2rem 0 0; color: var(--muted); font-size: .75rem; }
 
 @media (max-width: 1540px) {
