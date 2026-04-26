@@ -9,47 +9,39 @@
   <body>
     <header class="topbar">
       <h1>Heightmap Studio</h1>
-      <p>Converter / Optimizer pour Minecraft + WorldPainter</p>
+      <p>Conversion automatique d'image en vraie heightmap Minecraft / WorldPainter</p>
       <span id="statusText">Prêt</span>
     </header>
 
     <main class="layout">
       <aside class="panel left">
         <section>
-          <h2>Import</h2>
+          <h2>1) Importer image</h2>
           <label class="dropzone" for="fileInput" id="dropZone">
-            Glisser-déposer une heightmap ici ou cliquer.
-            <input id="fileInput" type="file" accept=".png,.raw,.tif,.tiff,image/png,image/tiff" />
+            Glisser-déposer une image ou cliquer.
+            <input id="fileInput" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" />
           </label>
-          <button id="btnAnalyze">Analyser</button>
-          <button id="btnAutoFix">Autofix</button>
         </section>
 
         <section>
-          <h2>Processing</h2>
-          <label>Min Y Minecraft <input id="minY" type="number" value="-64" /></label>
-          <label>Max Y Minecraft <input id="maxY" type="number" value="320" /></label>
-          <label>Sea Level <input id="seaLevel" type="number" value="64" /></label>
-          <label>Water Level <input id="waterLevel" type="number" value="64" /></label>
-          <label>Build Limit <input id="buildLimit" type="number" value="320" /></label>
-          <label>Height Stretch <input id="heightStretch" type="range" min="0.5" max="2.5" step="0.05" value="1" /></label>
-          <label>Smooth Terrain <input id="smoothStrength" type="range" min="0" max="1" step="0.05" value="0.2" /></label>
-          <label>Sharpen Terrain <input id="sharpenStrength" type="range" min="0" max="1" step="0.05" value="0.1" /></label>
-          <label>Preserve Peaks <input id="preservePeaks" type="checkbox" checked /></label>
-          <button id="btnProcess">Convertir / Optimiser</button>
+          <h2>2) Convertir automatiquement</h2>
+          <label>
+            <input id="minecraftBoost" type="checkbox" />
+            Conversion plus marquée / plus Minecraft
+          </label>
+          <button id="btnProcess">Convertir en heightmap Minecraft</button>
         </section>
 
         <section>
-          <h2>Layers</h2>
-          <p>Overlay automatique Minecraft: Ocean, Beach, Lowlands, Hills, Highlands, Mountains, Peaks.</p>
+          <h2>Previews</h2>
           <label>Mode aperçu
             <select id="previewMode">
               <option value="original">Original</option>
-              <option value="corrected">Corrected</option>
+              <option value="watermask">Masque eau / terre</option>
+              <option value="biome">Biome interprété</option>
+              <option value="heightmap">Heightmap finale</option>
+              <option value="layers">Preview Minecraft layers</option>
               <option value="hillshade">Hillshade</option>
-              <option value="heatmap">Altitude Heatmap</option>
-              <option value="layers">Minecraft Layers</option>
-              <option value="slope">Slope Analyzer</option>
             </select>
           </label>
         </section>
@@ -62,14 +54,13 @@
 
       <aside class="panel right">
         <section>
-          <h2>Stats & Analyzer</h2>
+          <h2>Validation automatique</h2>
           <div id="statsPanel"></div>
         </section>
         <section>
-          <h2>Export</h2>
-          <button id="btnExport8">Export PNG 8-bit (WP safe)</button>
-          <button id="btnExport16">Export PNG 16-bit (packed)</button>
-          <p class="note">Export 16-bit: encodage high/low bytes en PNG RGB (R=high, G=low) + mode WorldPainter Safe.</p>
+          <h2>3) Export</h2>
+          <button id="btnExport8">Exporter PNG grayscale</button>
+          <button id="btnExportJson">Exporter JSON</button>
         </section>
       </aside>
     </main>
