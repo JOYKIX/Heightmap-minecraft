@@ -35,15 +35,15 @@ function formatTarget(v) {
 }
 
 export function renderWorldPainterSettings(config, el) {
-  const graySeaLevel = Math.round(((config.seaLevel - config.minY) / (config.maxY - config.minY)) * 255);
+  const graySeaLevel = Math.round(((config.seaLevel - config.minY) / (config.maxY - config.minY)) * 65535);
   el.innerHTML = `
     <h3>WorldPainter</h3>
     <ul>
-      <li>Lowest Value = ${config.minY}</li>
+      <li>From Image Lowest Value = 0</li>
+      <li>From Image Highest Value = 65535</li>
       <li>Water Level = ${config.seaLevel}</li>
-      <li>Highest Value = ${config.maxY}</li>
-      <li>Build limits = -64 / 320</li>
-      <li>Gray sea level = ${graySeaLevel}</li>
+      <li>Build limits = -64 / 319</li>
+      <li>Gray16 sea level = ${graySeaLevel}</li>
     </ul>
   `;
 }

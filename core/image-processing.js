@@ -32,7 +32,7 @@ export function extendOceanCanvas(image, paddingPct, seaLevel = 64, mode = 'heig
         const depth = 1 - clamp(edge, 0, 1);
         if (mode === 'heightmap-grayscale') {
           const yVal = seaLevel - 12 - depth * 80;
-          const gray = clamp(Math.round(((yVal + 64) / 384) * 255), 0, 255);
+          const gray = clamp(Math.round(((yVal + 64) / 383) * 255), 0, 255);
           out[o] = out[o + 1] = out[o + 2] = gray;
         } else {
           const deep = [8, 40, 92], shallow = [45, 102, 168];
