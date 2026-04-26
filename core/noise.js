@@ -1,49 +1,26 @@
-import { createRng } from './random.js';
+import { lerp } from '../js/utils.js';
 
-function smoothstep(t) {
-  return t * t * (3 - 2 * t);
+function hash2(x, y, s = 1337) {
+  let h = x * 374761393 + y * 668265263 + s * 1442695040888963407;
+  h = (h ^ (h >> 13)) * 1274126177;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 }
 
-export function createValueNoise2D(seed = 'default', grid = 64) {
-  const rng = createRng(seed);
-  const values = new Float32Array(grid * grid);
-  for (let i = 0; i < values.length; i++) values[i] = rng();
-
-  const get = (x, y) => {
-    const xi = ((x % grid) + grid) % grid;
-    const yi = ((y % grid) + grid) % grid;
-    return values[yi * grid + xi];
-  };
-
-  return (x, y, frequency = 1) => {
-    const fx = x * frequency;
-    const fy = y * frequency;
-    const x0 = Math.floor(fx);
-    const y0 = Math.floor(fy);
-    const x1 = x0 + 1;
-    const y1 = y0 + 1;
-    const tx = smoothstep(fx - x0);
-    const ty = smoothstep(fy - y0);
-    const a = get(x0, y0);
-    const b = get(x1, y0);
-    const c = get(x0, y1);
-    const d = get(x1, y1);
-    const ab = a + (b - a) * tx;
-    const cd = c + (d - c) * tx;
-    return ab + (cd - ab) * ty;
-  };
+export function valueNoise2D(x, y, seed = 0) {
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const tx = x - x0, ty = y - y0;
+  const a = hash2(x0, y0, seed), b = hash2(x0 + 1, y0, seed);
+  const c = hash2(x0, y0 + 1, seed), d = hash2(x0 + 1, y0 + 1, seed);
+  const u = tx * tx * (3 - 2 * tx), v = ty * ty * (3 - 2 * ty);
+  return lerp(lerp(a, b, u), lerp(c, d, u), v);
 }
 
-export function fbm2D(noiseFn, x, y, octaves = 4, lacunarity = 2, gain = 0.5, baseFrequency = 1) {
-  let amp = 1;
-  let freq = baseFrequency;
-  let sum = 0;
-  let norm = 0;
+export function fbm2D(x, y, octaves = 5, lacunarity = 2, gain = 0.5, seed = 0) {
+  let amp = 0.5, freq = 1, sum = 0;
   for (let i = 0; i < octaves; i++) {
-    sum += noiseFn(x, y, freq) * amp;
-    norm += amp;
-    amp *= gain;
+    sum += amp * valueNoise2D(x * freq, y * freq, seed + i * 17);
     freq *= lacunarity;
+    amp *= gain;
   }
-  return norm > 0 ? sum / norm : 0;
+  return sum;
 }
