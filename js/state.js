@@ -5,13 +5,14 @@ export const appState = {
     minY: -64,
     seaLevel: 64,
     maxY: 319,
-    oceanBorder: 'standard',
     resolution: 1024
   },
   procedural: {
     seed: 'island-001',
-    landRatio: 0.42,
-    includeArchipelago: true,
+    resolution: 1024,
+    relief: 'normal',
+    islandSize: 'medium',
+    style: 'balanced',
     result: null,
     stats: null
   },
