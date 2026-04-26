@@ -116,3 +116,7 @@ button:hover { border-color: var(--accent); }
     height: auto;
   }
 }
+
+.layer-row { border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin-bottom: 8px; }
+.layer-row h4 { margin: 0 0 6px; font-size: 0.9rem; }
+.layer-row label { font-size: 0.82rem; margin-bottom: 6px; }
