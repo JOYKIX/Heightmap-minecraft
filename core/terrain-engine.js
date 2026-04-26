@@ -68,7 +68,7 @@ export function generateProceduralIsland(config) {
   }
 
   return {
-    width, height, yMap, gray16, landMask, biomeMap: biomes.biomeMap,
+    width, height, yMap, gray16, landMask, biomeMap: biomes.biomeMap, settings: { minY: config.minY, maxY: config.maxY, seaLevel: config.seaLevel },
     stats: {
       landPct: ((landCount / yMap.length) * 100).toFixed(2),
       oceanPct: (100 - (landCount / yMap.length) * 100).toFixed(2),

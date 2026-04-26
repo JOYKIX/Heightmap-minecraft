@@ -4,7 +4,7 @@ export const appState = {
   settings: {
     minY: -64,
     seaLevel: 64,
-    maxY: 320,
+    maxY: 319,
     oceanBorder: 'standard',
     resolution: 1024
   },
@@ -24,10 +24,15 @@ export const appState = {
   converter: {
     source: null,
     layers: [
-      ['Ocean Deep', -64, 20], ['Ocean', 20, 50], ['Shallow Water', 50, 63], ['Beach', 64, 70],
-      ['Plains', 70, 105], ['Forest', 75, 115], ['Swamp', 62, 72], ['Savanna', 70, 105],
-      ['Desert', 70, 110], ['Mesa/Canyon', 120, 190], ['Hills', 105, 135], ['Mountains', 170, 250],
-      ['Snow/Alps', 220, 290], ['Peaks', 290, 320]
+      ['Océan profond', -64, 20],
+      ['Océan', 20, 50],
+      ['Hauts-fonds', 50, 63],
+      ['Sea Level', 64, 64],
+      ['Plages', 64, 70],
+      ['Terres basses', 70, 90],
+      ['Collines', 90, 120],
+      ['Montagnes', 120, 220],
+      ['Pics', 220, 319]
     ],
     result: null
   }
