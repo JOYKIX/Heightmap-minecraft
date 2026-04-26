@@ -1,23 +1,13 @@
-export function hashStringToSeed(input = "default") {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+export function createRng(seedString = 'seed') {
+  let h = 1779033703 ^ seedString.length;
+  for (let i = 0; i < seedString.length; i++) {
+    h = Math.imul(h ^ seedString.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
   }
-  return h >>> 0;
-}
-
-export function createRng(seedValue = "default") {
-  let state = typeof seedValue === "string" ? hashStringToSeed(seedValue) : seedValue >>> 0;
-  if (state === 0) state = 0x9e3779b9;
-  return () => {
-    state ^= state << 13;
-    state ^= state >>> 17;
-    state ^= state << 5;
-    return ((state >>> 0) / 4294967296);
+  return function rand() {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
   };
-}
-
-export function randRange(rng, min, max) {
-  return min + (max - min) * rng();
 }

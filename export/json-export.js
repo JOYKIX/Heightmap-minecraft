@@ -1,15 +1,6 @@
-export function exportTerrainJson(terrain, fileName = 'heightmap-data.json') {
-  const payload = {
-    config: terrain.config,
-    stats: terrain.stats,
-    heightY: Array.from(terrain.yInt),
-    grayscale: Array.from(terrain.grayscale)
-  };
+import { downloadBlob } from '../js/utils.js';
 
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = fileName;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+export function exportHeightmapJson(payload, filename = 'heightmap.json') {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  downloadBlob(blob, filename);
 }

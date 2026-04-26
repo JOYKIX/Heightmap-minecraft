@@ -3,80 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Heightmap Layer Converter</title>
-    <link rel="stylesheet" href="./style.css" />
+    <title>Heightmap Studio</title>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <header class="topbar">
-      <h1>Heightmap Layer Converter</h1>
-      <p>Une couleur logique = une altitude Minecraft (export PNG grayscale 16-bit)</p>
-      <span id="statusText">Prêt</span>
-    </header>
-
-    <main class="layout">
-      <aside class="panel left">
-        <section>
-          <h2>1) Import image</h2>
-          <label class="dropzone" for="fileInput" id="dropZone">
-            Glisser-déposer une image ou cliquer.
-            <input id="fileInput" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" />
-          </label>
-        </section>
-
-        <section>
-          <h2>2) Conversion Minecraft / WorldPainter</h2>
-          <label>Preset
-            <select id="presetSelect"></select>
-          </label>
-          <label>Min Y <input id="minYInput" type="number" value="-64" /></label>
-          <label>Max Y <input id="maxYInput" type="number" value="320" /></label>
-          <label>Sea Level <input id="seaLevelInput" type="number" value="64" /></label>
-          <label>Sensibilité eau <input id="waterSensitivity" type="number" min="0" max="1" step="0.01" value="0.48" /></label>
-          <label>Relief visuel <input id="reliefGain" type="number" min="0.5" max="2" step="0.01" value="1" /></label>
-          <label>Intensité biome <input id="biomeStrength" type="number" min="0" max="2" step="0.01" value="0.8" /></label>
-          <button id="btnProcess">Convertir en Heightmap Layered</button>
-        </section>
-
-        <section>
-          <h2>Layer Editor</h2>
-          <p class="note">Chaque couche définit une plage d’altitude Minecraft puis est convertie en gray16.</p>
-          <div id="layerControls"></div>
-        </section>
-
-        <section>
-          <h2>Previews</h2>
-          <label>Mode aperçu
-            <select id="previewMode">
-              <option value="original">Image originale</option>
-              <option value="watermask">Water / Land preview</option>
-              <option value="classes">Terrain classes</option>
-              <option value="altitude">Altitude mapping preview</option>
-              <option value="layers">Layer preview</option>
-              <option value="grayscale">Grayscale preview</option>
-              <option value="preview16">16-bit preview</option>
-            </select>
-          </label>
-        </section>
-      </aside>
-
-      <section class="panel center">
-        <h2>Preview</h2>
-        <canvas id="previewCanvas" width="1024" height="1024"></canvas>
-      </section>
-
-      <aside class="panel right">
-        <section>
-          <h2>Validation automatique</h2>
-          <div id="statsPanel"></div>
-        </section>
-        <section>
-          <h2>3) Export</h2>
-          <button id="btnExport16">Exporter PNG 16-bit grayscale</button>
-          <button id="btnExportJson">Exporter JSON</button>
-        </section>
-      </aside>
-    </main>
-
-    <script src="./script.js"></script>
+    <div id="app"></div>
+    <script type="module" src="./app.js"></script>
   </body>
 </html>
