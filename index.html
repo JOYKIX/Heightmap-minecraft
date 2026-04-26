@@ -3,20 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Heightmap Studio for Minecraft / WorldPainter</title>
+    <title>Heightmap Layer Converter</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <header class="topbar">
-      <h1>Heightmap Studio</h1>
-      <p>Convertisseur contrôlable IMAGE → HEIGHTMAP WorldPainter (sans génération procédurale)</p>
+      <h1>Heightmap Layer Converter</h1>
+      <p>Une couleur logique = une altitude Minecraft (export PNG grayscale 16-bit)</p>
       <span id="statusText">Prêt</span>
     </header>
 
     <main class="layout">
       <aside class="panel left">
         <section>
-          <h2>1) Importer image</h2>
+          <h2>1) Import image</h2>
           <label class="dropzone" for="fileInput" id="dropZone">
             Glisser-déposer une image ou cliquer.
             <input id="fileInput" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" />
@@ -24,41 +24,22 @@
         </section>
 
         <section>
-          <h2>2) Paramètres de conversion</h2>
+          <h2>2) Conversion Minecraft / WorldPainter</h2>
           <label>Preset
             <select id="presetSelect"></select>
           </label>
-          <label>Sea level <input id="seaLevelInput" type="number" value="64" /></label>
-          <label>Min Y <input id="minYInput" type="number" value="0" /></label>
-          <label>Max Y <input id="maxYInput" type="number" value="255" /></label>
-          <label>Sensibilité eau <input id="waterSensitivity" type="number" min="0" max="1" step="0.01" value="0.5" /></label>
-          <label>Seuil bleu <input id="blueThreshold" type="number" min="0" max="1" step="0.01" value="0.2" /></label>
-          <label>Seuil sombre extérieur <input id="darkEdgeThreshold" type="number" min="0" max="1" step="0.01" value="0.26" /></label>
-          <label>Sensibilité montagne <input id="mountainSensitivity" type="number" min="0" max="1" step="0.01" value="0.55" /></label>
-          <label>Contour strength <input id="contourStrength" type="number" min="0" max="1" step="0.01" value="0.5" /></label>
+          <label>Min Y <input id="minYInput" type="number" value="-64" /></label>
+          <label>Max Y <input id="maxYInput" type="number" value="320" /></label>
+          <label>Sea Level <input id="seaLevelInput" type="number" value="64" /></label>
+          <label>Sensibilité eau <input id="waterSensitivity" type="number" min="0" max="1" step="0.01" value="0.48" /></label>
+          <label>Relief visuel <input id="reliefGain" type="number" min="0.5" max="2" step="0.01" value="1" /></label>
+          <label>Intensité biome <input id="biomeStrength" type="number" min="0" max="2" step="0.01" value="0.8" /></label>
+          <button id="btnProcess">Convertir en Heightmap Layered</button>
         </section>
 
         <section>
-          <h2>Minecraft Layering</h2>
-          <label><input id="quantEnabled" type="checkbox" checked /> Quantification activée</label>
-          <label>Step size
-            <select id="quantStep">
-              <option value="1">1 bloc</option>
-              <option value="2">2 blocs</option>
-              <option value="4">4 blocs</option>
-              <option value="8">8 blocs</option>
-            </select>
-          </label>
-          <label><input id="preservePlains" type="checkbox" checked /> Preserve plains</label>
-          <label><input id="preserveMountains" type="checkbox" checked /> Preserve mountains</label>
-          <label><input id="canyonTerracing" type="checkbox" /> Canyon terracing</label>
-          <label><input id="autoCorrection" type="checkbox" checked /> Correction auto</label>
-          <label><input id="advancedMode" type="checkbox" /> Mode avancé (couches)</label>
-          <button id="btnProcess">Convertir en heightmap Minecraft</button>
-        </section>
-
-        <section id="advancedPanel" style="display:none">
-          <h2>Couches Minecraft (min/max/variation/quant/priorité)</h2>
+          <h2>Layer Editor</h2>
+          <p class="note">Chaque couche définit une plage d’altitude Minecraft puis est convertie en gray16.</p>
           <div id="layerControls"></div>
         </section>
 
@@ -67,11 +48,12 @@
           <label>Mode aperçu
             <select id="previewMode">
               <option value="original">Image originale</option>
-              <option value="watermask">Masque eau / terre</option>
-              <option value="classes">Classes terrain</option>
-              <option value="heightmap">Heightmap finale</option>
-              <option value="layers">Preview couches Minecraft</option>
-              <option value="hillshade">Hillshade</option>
+              <option value="watermask">Water / Land preview</option>
+              <option value="classes">Terrain classes</option>
+              <option value="altitude">Altitude mapping preview</option>
+              <option value="layers">Layer preview</option>
+              <option value="grayscale">Grayscale preview</option>
+              <option value="preview16">16-bit preview</option>
             </select>
           </label>
         </section>
@@ -89,7 +71,7 @@
         </section>
         <section>
           <h2>3) Export</h2>
-          <button id="btnExport8">Exporter PNG grayscale</button>
+          <button id="btnExport16">Exporter PNG 16-bit grayscale</button>
           <button id="btnExportJson">Exporter JSON</button>
         </section>
       </aside>
