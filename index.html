@@ -9,7 +9,7 @@
   <body>
     <header class="topbar">
       <h1>Heightmap Studio</h1>
-      <p>Conversion automatique d'image en vraie heightmap Minecraft / WorldPainter</p>
+      <p>Convertisseur contrôlable IMAGE → HEIGHTMAP WorldPainter (sans génération procédurale)</p>
       <span id="statusText">Prêt</span>
     </header>
 
@@ -24,23 +24,53 @@
         </section>
 
         <section>
-          <h2>2) Convertir automatiquement</h2>
-          <label>
-            <input id="minecraftBoost" type="checkbox" />
-            Conversion plus marquée / plus Minecraft
+          <h2>2) Paramètres de conversion</h2>
+          <label>Preset
+            <select id="presetSelect"></select>
           </label>
+          <label>Sea level <input id="seaLevelInput" type="number" value="64" /></label>
+          <label>Min Y <input id="minYInput" type="number" value="0" /></label>
+          <label>Max Y <input id="maxYInput" type="number" value="255" /></label>
+          <label>Sensibilité eau <input id="waterSensitivity" type="number" min="0" max="1" step="0.01" value="0.5" /></label>
+          <label>Seuil bleu <input id="blueThreshold" type="number" min="0" max="1" step="0.01" value="0.2" /></label>
+          <label>Seuil sombre extérieur <input id="darkEdgeThreshold" type="number" min="0" max="1" step="0.01" value="0.26" /></label>
+          <label>Sensibilité montagne <input id="mountainSensitivity" type="number" min="0" max="1" step="0.01" value="0.55" /></label>
+          <label>Contour strength <input id="contourStrength" type="number" min="0" max="1" step="0.01" value="0.5" /></label>
+        </section>
+
+        <section>
+          <h2>Minecraft Layering</h2>
+          <label><input id="quantEnabled" type="checkbox" checked /> Quantification activée</label>
+          <label>Step size
+            <select id="quantStep">
+              <option value="1">1 bloc</option>
+              <option value="2">2 blocs</option>
+              <option value="4">4 blocs</option>
+              <option value="8">8 blocs</option>
+            </select>
+          </label>
+          <label><input id="preservePlains" type="checkbox" checked /> Preserve plains</label>
+          <label><input id="preserveMountains" type="checkbox" checked /> Preserve mountains</label>
+          <label><input id="canyonTerracing" type="checkbox" /> Canyon terracing</label>
+          <label><input id="autoCorrection" type="checkbox" checked /> Correction auto</label>
+          <label><input id="advancedMode" type="checkbox" /> Mode avancé (couches)</label>
           <button id="btnProcess">Convertir en heightmap Minecraft</button>
+        </section>
+
+        <section id="advancedPanel" style="display:none">
+          <h2>Couches Minecraft (min/max/variation/quant/priorité)</h2>
+          <div id="layerControls"></div>
         </section>
 
         <section>
           <h2>Previews</h2>
           <label>Mode aperçu
             <select id="previewMode">
-              <option value="original">Original</option>
+              <option value="original">Image originale</option>
               <option value="watermask">Masque eau / terre</option>
-              <option value="biome">Biome interprété</option>
+              <option value="classes">Classes terrain</option>
               <option value="heightmap">Heightmap finale</option>
-              <option value="layers">Preview Minecraft layers</option>
+              <option value="layers">Preview couches Minecraft</option>
               <option value="hillshade">Hillshade</option>
             </select>
           </label>
