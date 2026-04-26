@@ -3,71 +3,74 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Heightmap Minecraft / WorldPainter</title>
+    <title>Heightmap Studio for Minecraft / WorldPainter</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <header class="topbar">
-      <h1>Heightmap Minecraft Studio</h1>
-      <label>Seed <input id="seedInput" value="default" /></label>
+      <h1>Heightmap Studio</h1>
+      <p>Converter / Optimizer pour Minecraft + WorldPainter</p>
       <span id="statusText">Prêt</span>
     </header>
 
     <main class="layout">
       <aside class="panel left">
-        <h2>Paramètres</h2>
-        <label>Preset <select id="presetSelect"></select></label>
-        <label>Taille
-          <select id="sizeSelect">
-            <option value="512">512 (rapide)</option>
-            <option value="1024" selected>1024 (stable)</option>
-            <option value="2048">2048 (possible)</option>
-            <option value="4096">4096 (warning)</option>
-          </select>
-        </label>
-        <label>Land coverage <input id="landCoverage" type="number" step="0.01" min="0.2" max="0.8" value="0.45" /></label>
-        <label>Ocean border
-          <select id="oceanBorder">
-            <option value="small">small (8%)</option>
-            <option value="standard" selected>standard (15%)</option>
-            <option value="large">large (25%)</option>
-            <option value="huge">huge (35%)</option>
-          </select>
-        </label>
-        <label>Rivières
-          <select id="riverAmount">
-            <option value="few">few</option>
-            <option value="some" selected>some</option>
-            <option value="many">many</option>
-          </select>
-        </label>
+        <section>
+          <h2>Import</h2>
+          <label class="dropzone" for="fileInput" id="dropZone">
+            Glisser-déposer une heightmap ici ou cliquer.
+            <input id="fileInput" type="file" accept=".png,.raw,.tif,.tiff,image/png,image/tiff" />
+          </label>
+          <button id="btnAnalyze">Analyser</button>
+          <button id="btnAutoFix">Autofix</button>
+        </section>
 
+        <section>
+          <h2>Processing</h2>
+          <label>Min Y Minecraft <input id="minY" type="number" value="-64" /></label>
+          <label>Max Y Minecraft <input id="maxY" type="number" value="320" /></label>
+          <label>Sea Level <input id="seaLevel" type="number" value="64" /></label>
+          <label>Water Level <input id="waterLevel" type="number" value="64" /></label>
+          <label>Build Limit <input id="buildLimit" type="number" value="320" /></label>
+          <label>Height Stretch <input id="heightStretch" type="range" min="0.5" max="2.5" step="0.05" value="1" /></label>
+          <label>Smooth Terrain <input id="smoothStrength" type="range" min="0" max="1" step="0.05" value="0.2" /></label>
+          <label>Sharpen Terrain <input id="sharpenStrength" type="range" min="0" max="1" step="0.05" value="0.1" /></label>
+          <label>Preserve Peaks <input id="preservePeaks" type="checkbox" checked /></label>
+          <button id="btnProcess">Convertir / Optimiser</button>
+        </section>
 
-        <fieldset>
-          <legend>Biomes</legend>
-          <label>Biome blend strength <input id="biomeBlendStrength" type="number" step="0.05" min="0" max="1" value="0.75" /></label>
-          <div id="biomeControls"></div>
-        </fieldset>
-
-        <div class="buttons">
-          <button id="btnGenerate">Générer</button>
-          <button id="btnRandomSeed">Seed aléatoire</button>
-          <button id="btnExportPng">Export PNG</button>
-          <button id="btnExportJson">Export JSON</button>
-          <button id="btnReset">Reset</button>
-        </div>
+        <section>
+          <h2>Layers</h2>
+          <p>Overlay automatique Minecraft: Ocean, Beach, Lowlands, Hills, Highlands, Mountains, Peaks.</p>
+          <label>Mode aperçu
+            <select id="previewMode">
+              <option value="original">Original</option>
+              <option value="corrected">Corrected</option>
+              <option value="hillshade">Hillshade</option>
+              <option value="heatmap">Altitude Heatmap</option>
+              <option value="layers">Minecraft Layers</option>
+              <option value="slope">Slope Analyzer</option>
+            </select>
+          </label>
+        </section>
       </aside>
 
-      <section class="center">
-        <div class="preview-toolbar">
-          <label>Mode aperçu <select id="previewMode"></select></label>
-        </div>
+      <section class="panel center">
+        <h2>Preview</h2>
         <canvas id="previewCanvas" width="1024" height="1024"></canvas>
       </section>
 
       <aside class="panel right">
-        <div id="statsPanel"></div>
-        <div id="wpSettings"></div>
+        <section>
+          <h2>Stats & Analyzer</h2>
+          <div id="statsPanel"></div>
+        </section>
+        <section>
+          <h2>Export</h2>
+          <button id="btnExport8">Export PNG 8-bit (WP safe)</button>
+          <button id="btnExport16">Export PNG 16-bit (packed)</button>
+          <p class="note">Export 16-bit: encodage high/low bytes en PNG RGB (R=high, G=low) + mode WorldPainter Safe.</p>
+        </section>
       </aside>
     </main>
 
