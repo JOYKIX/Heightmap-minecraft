@@ -170,7 +170,7 @@ public sealed class TerrainGenerator
             // Océan cohérent
             if (y < 35f)
                 y = Lerp(y, 28f, 0.15f);
-            if (y is >= 35f and < seaLevel)
+            if (y >= 35f && y < seaLevel)
                 y = Lerp(y, 46f + (y - 35f) * 0.35f, 0.1f);
 
             // Zones jouables de surface
@@ -210,28 +210,17 @@ public sealed class TerrainGenerator
                     if (h < seaLevel + 20f)
                         localMaxDiff = MathF.Min(localMaxDiff, 2f + r * 2f);
 
-                    Span<int> nbs = stackalloc int[4]
-                    {
-                        idx - 1,
-                        idx + 1,
-                        idx - size,
-                        idx + size
-                    };
+                    var left = current[idx - 1];
+                    var right = current[idx + 1];
+                    var up = current[idx - size];
+                    var down = current[idx + size];
 
-                    var sum = 0f;
-                    for (var i = 0; i < nbs.Length; i++)
-                    {
-                        var ni = nbs[i];
-                        var nh = current[ni];
-                        var diff = h - nh;
+                    left = ClampNeighborDelta(h, left, localMaxDiff);
+                    right = ClampNeighborDelta(h, right, localMaxDiff);
+                    up = ClampNeighborDelta(h, up, localMaxDiff);
+                    down = ClampNeighborDelta(h, down, localMaxDiff);
 
-                        if (MathF.Abs(diff) > localMaxDiff)
-                            nh = h - MathF.Sign(diff) * localMaxDiff;
-
-                        sum += nh;
-                    }
-
-                    var target = (h * 0.55f + (sum / nbs.Length) * 0.45f);
+                    var target = (h * 0.55f + ((left + right + up + down) * 0.25f) * 0.45f);
                     next[idx] = MathF.Round(Math.Clamp(target, minY, maxY));
                 }
             }
@@ -240,6 +229,15 @@ public sealed class TerrainGenerator
         }
 
         return current;
+    }
+
+    private static float ClampNeighborDelta(float center, float neighbor, float localMaxDiff)
+    {
+        var diff = center - neighbor;
+        if (MathF.Abs(diff) <= localMaxDiff)
+            return neighbor;
+
+        return center - MathF.Sign(diff) * localMaxDiff;
     }
 
     public static float ToNormalizedY(float worldY, int minY = MinTerrainY, int maxY = MaxTerrainY) =>
