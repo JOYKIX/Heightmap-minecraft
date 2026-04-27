@@ -1,5 +1,6 @@
 using HeightmapMinecraft.Core;
 using HeightmapMinecraft.Models;
+using Avalonia.Media.Imaging;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
@@ -41,10 +42,10 @@ public sealed class ImageExportService
         if (size > maxPreviewSize)
             img.Mutate(c => c.Resize(new ResizeOptions { Size = new Size(maxPreviewSize, maxPreviewSize), Mode = ResizeMode.Max }));
 
-        var ms = new MemoryStream();
+        using var ms = new MemoryStream();
         img.SaveAsPng(ms);
         ms.Position = 0;
-        return new Avalonia.Media.Imaging.Bitmap(ms);
+        return new Bitmap(ms);
     }
 
     private static async Task SaveHeight16Async(float[] height, int size, string filePath, CancellationToken token)
