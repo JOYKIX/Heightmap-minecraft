@@ -1,9 +1,11 @@
 import { lerp } from '../js/utils.js';
 
 function hash2(x, y, s = 1337) {
-  let h = x * 374761393 + y * 668265263 + s * 1442695040888963407;
-  h = (h ^ (h >> 13)) * 1274126177;
-  return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+  let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(s, 362437);
+  h = (h ^ (h >>> 13)) >>> 0;
+  h = Math.imul(h, 1274126177) >>> 0;
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967295;
 }
 
 export function valueNoise2D(x, y, seed = 0) {
@@ -16,11 +18,12 @@ export function valueNoise2D(x, y, seed = 0) {
 }
 
 export function fbm2D(x, y, octaves = 5, lacunarity = 2, gain = 0.5, seed = 0) {
-  let amp = 0.5, freq = 1, sum = 0;
+  let amp = 1, freq = 1, sum = 0, ampSum = 0;
   for (let i = 0; i < octaves; i++) {
     sum += amp * valueNoise2D(x * freq, y * freq, seed + i * 17);
+    ampSum += amp;
     freq *= lacunarity;
     amp *= gain;
   }
-  return sum;
+  return ampSum > 0 ? sum / ampSum : 0;
 }
