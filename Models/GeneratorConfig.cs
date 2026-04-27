@@ -12,6 +12,13 @@ public sealed class GeneratorConfig
     public int ErosionSteps { get; set; } = 45;
     public int ThermalIterations { get; set; } = 14;
     public float MoistureWindAngleDeg { get; set; } = 35f;
+
+    public float TerrainScale { get; set; } = 1.0f;
+    public float MountainScale { get; set; } = 1.0f;
+    public float OceanCoverageBias { get; set; }
+    public bool EnableRivers { get; set; } = true;
+    public float ErosionScale { get; set; } = 1.0f;
+
     public string OutputDirectory { get; set; } = Environment.CurrentDirectory;
     public string FilePrefix { get; set; } = "island";
 
