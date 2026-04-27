@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import argparse
 import math
+import queue
+import threading
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -29,6 +31,14 @@ try:
     from PIL import Image
 except Exception:
     Image = None
+
+try:
+    import tkinter as tk
+    from tkinter import messagebox, ttk
+except Exception:
+    tk = None
+    ttk = None
+    messagebox = None
 
 
 @dataclass
@@ -359,6 +369,7 @@ def save_outputs(height: np.ndarray, moisture: np.ndarray, cfg: GeneratorConfig,
 
 def parse_args() -> GeneratorConfig:
     p = argparse.ArgumentParser(description="Générateur procédural d'île ultra réaliste")
+    p.add_argument("--gui", action="store_true", help="Lance l'interface graphique")
     p.add_argument("--size", type=int, default=1024, help="Résolution carrée de la heightmap")
     p.add_argument("--seed", type=int, default=42, help="Seed aléatoire")
     p.add_argument("--sea-level", type=float, default=0.45, help="Niveau marin normalisé [0..1]")
@@ -368,9 +379,10 @@ def parse_args() -> GeneratorConfig:
     p.add_argument("--erosion-steps", type=int, default=45, help="Pas max par gouttelette")
     p.add_argument("--thermal-iterations", type=int, default=14, help="Itérations d'érosion thermique")
     p.add_argument("--wind-angle", type=float, default=35.0, help="Angle du vent (humidité) en degrés")
+    p.add_argument("--output-prefix", type=str, default="", help="Préfixe des fichiers de sortie")
     args = p.parse_args()
 
-    return GeneratorConfig(
+    cfg = GeneratorConfig(
         size=args.size,
         seed=args.seed,
         sea_level=args.sea_level,
@@ -381,12 +393,226 @@ def parse_args() -> GeneratorConfig:
         thermal_iterations=args.thermal_iterations,
         moisture_wind_angle_deg=args.wind_angle,
     )
+    return cfg, args.gui, args.output_prefix
+
+
+class GeneratorGUI:
+    def __init__(self) -> None:
+        if tk is None or ttk is None:
+            raise RuntimeError("Tkinter n'est pas disponible dans cet environnement.")
+        self.root = tk.Tk()
+        self.root.title("Heightmap Minecraft - Générateur d'île")
+        self.root.geometry("1120x820")
+        self.root.minsize(980, 720)
+
+        self.preview_photo = None
+        self.last_height: Optional[np.ndarray] = None
+        self.last_moisture: Optional[np.ndarray] = None
+        self.worker: Optional[threading.Thread] = None
+        self.events: "queue.Queue[Tuple[str, object]]" = queue.Queue()
+
+        self._build_ui()
+        self._set_defaults()
+        self._tick_worker()
+
+    def _build_ui(self) -> None:
+        self.root.columnconfigure(0, weight=0)
+        self.root.columnconfigure(1, weight=1)
+        self.root.rowconfigure(0, weight=1)
+
+        left = ttk.Frame(self.root, padding=12)
+        right = ttk.Frame(self.root, padding=12)
+        left.grid(row=0, column=0, sticky="nsw")
+        right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(1, weight=1)
+
+        ttk.Label(left, text="Paramètres", font=("TkDefaultFont", 11, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10)
+        )
+
+        self.vars = {
+            "size": tk.IntVar(),
+            "seed": tk.IntVar(),
+            "sea_level": tk.DoubleVar(),
+            "max_height_blocks": tk.IntVar(),
+            "octaves": tk.IntVar(),
+            "erosion_droplets": tk.IntVar(),
+            "erosion_steps": tk.IntVar(),
+            "thermal_iterations": tk.IntVar(),
+            "wind_angle": tk.DoubleVar(),
+            "output_prefix": tk.StringVar(),
+            "auto_prefix": tk.BooleanVar(value=True),
+        }
+
+        fields = [
+            ("Taille", "size"),
+            ("Seed", "seed"),
+            ("Niveau mer", "sea_level"),
+            ("Hauteur max blocs", "max_height_blocks"),
+            ("Octaves", "octaves"),
+            ("Gouttelettes érosion", "erosion_droplets"),
+            ("Pas érosion", "erosion_steps"),
+            ("Itérations thermiques", "thermal_iterations"),
+            ("Angle vent", "wind_angle"),
+        ]
+
+        for i, (label, key) in enumerate(fields, start=1):
+            ttk.Label(left, text=label).grid(row=i, column=0, sticky="w", pady=2, padx=(0, 8))
+            ttk.Entry(left, textvariable=self.vars[key], width=20).grid(row=i, column=1, sticky="ew", pady=2)
+
+        row = len(fields) + 1
+        ttk.Checkbutton(
+            left,
+            text="Préfixe auto island_s<size>_seed<seed>",
+            variable=self.vars["auto_prefix"],
+            command=self._toggle_prefix,
+        ).grid(row=row, column=0, columnspan=2, sticky="w", pady=(12, 2))
+        row += 1
+        ttk.Label(left, text="Préfixe sortie").grid(row=row, column=0, sticky="w", pady=2)
+        self.prefix_entry = ttk.Entry(left, textvariable=self.vars["output_prefix"], width=24)
+        self.prefix_entry.grid(row=row, column=1, sticky="ew", pady=2)
+
+        row += 1
+        self.generate_btn = ttk.Button(left, text="Générer", command=self._start_generation)
+        self.generate_btn.grid(row=row, column=0, sticky="ew", pady=(14, 2))
+        ttk.Button(left, text="Sauver (dernier rendu)", command=self._save_last).grid(
+            row=row, column=1, sticky="ew", pady=(14, 2)
+        )
+
+        row += 1
+        self.progress = ttk.Progressbar(left, mode="indeterminate", length=240)
+        self.progress.grid(row=row, column=0, columnspan=2, sticky="ew", pady=8)
+        row += 1
+        self.status_var = tk.StringVar(value="Prêt.")
+        ttk.Label(left, textvariable=self.status_var, wraplength=280, justify="left").grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(4, 0)
+        )
+
+        ttk.Label(right, text="Aperçu", font=("TkDefaultFont", 11, "bold")).grid(row=0, column=0, sticky="w")
+        self.preview_label = ttk.Label(right, text="Cliquez sur Générer pour calculer une carte.")
+        self.preview_label.grid(row=1, column=0, sticky="nsew", pady=(8, 0))
+
+    def _set_defaults(self) -> None:
+        cfg = GeneratorConfig()
+        self.vars["size"].set(cfg.size)
+        self.vars["seed"].set(cfg.seed)
+        self.vars["sea_level"].set(cfg.sea_level)
+        self.vars["max_height_blocks"].set(cfg.max_height_blocks)
+        self.vars["octaves"].set(cfg.octaves)
+        self.vars["erosion_droplets"].set(cfg.erosion_droplets)
+        self.vars["erosion_steps"].set(cfg.erosion_steps)
+        self.vars["thermal_iterations"].set(cfg.thermal_iterations)
+        self.vars["wind_angle"].set(cfg.moisture_wind_angle_deg)
+        self.vars["output_prefix"].set("")
+        self._toggle_prefix()
+
+    def _toggle_prefix(self) -> None:
+        if self.vars["auto_prefix"].get():
+            self.prefix_entry.state(["disabled"])
+        else:
+            self.prefix_entry.state(["!disabled"])
+
+    def _cfg_from_ui(self) -> GeneratorConfig:
+        return GeneratorConfig(
+            size=self.vars["size"].get(),
+            seed=self.vars["seed"].get(),
+            sea_level=self.vars["sea_level"].get(),
+            max_height_blocks=self.vars["max_height_blocks"].get(),
+            octaves=self.vars["octaves"].get(),
+            erosion_droplets=self.vars["erosion_droplets"].get(),
+            erosion_steps=self.vars["erosion_steps"].get(),
+            thermal_iterations=self.vars["thermal_iterations"].get(),
+            moisture_wind_angle_deg=self.vars["wind_angle"].get(),
+        )
+
+    def _output_prefix(self, cfg: GeneratorConfig) -> str:
+        if self.vars["auto_prefix"].get() or not self.vars["output_prefix"].get().strip():
+            return f"island_s{cfg.size}_seed{cfg.seed}"
+        return self.vars["output_prefix"].get().strip()
+
+    def _start_generation(self) -> None:
+        if self.worker is not None and self.worker.is_alive():
+            return
+        cfg = self._cfg_from_ui()
+        self.status_var.set("Génération en cours... (cela peut prendre du temps)")
+        self.generate_btn.state(["disabled"])
+        self.progress.start(12)
+
+        def _job() -> None:
+            try:
+                height, moisture = generate_island(cfg)
+                prefix = self._output_prefix(cfg)
+                save_outputs(height, moisture, cfg, prefix)
+                self.events.put(("success", (height, moisture, cfg, prefix)))
+            except Exception as exc:
+                self.events.put(("error", str(exc)))
+
+        self.worker = threading.Thread(target=_job, daemon=True)
+        self.worker.start()
+
+    def _show_preview(self, height: np.ndarray, moisture: np.ndarray, cfg: GeneratorConfig) -> None:
+        if Image is None:
+            self.preview_label.configure(text="Pillow non installé: aperçu image indisponible.")
+            return
+
+        preview = (np.clip(height, 0.0, 1.0) * 255).astype(np.uint8)
+        biome = biome_map(height, moisture, cfg.sea_level)
+        overlay = (0.65 * biome.astype(np.float32) + 0.35 * np.stack([preview] * 3, axis=-1)).astype(np.uint8)
+        img = Image.fromarray(overlay, mode="RGB").resize((760, 760), Image.Resampling.BILINEAR)
+        try:
+            from PIL import ImageTk
+        except Exception:
+            self.preview_label.configure(text="ImageTk indisponible: aperçu non affichable.")
+            return
+        self.preview_photo = ImageTk.PhotoImage(img)
+        self.preview_label.configure(image=self.preview_photo, text="")
+
+    def _save_last(self) -> None:
+        if self.last_height is None or self.last_moisture is None:
+            self.status_var.set("Aucun rendu en mémoire. Générez d'abord une carte.")
+            return
+        cfg = self._cfg_from_ui()
+        prefix = self._output_prefix(cfg)
+        save_outputs(self.last_height, self.last_moisture, cfg, prefix)
+        self.status_var.set(f"Sauvegarde effectuée: {prefix}")
+
+    def _tick_worker(self) -> None:
+        while True:
+            try:
+                kind, payload = self.events.get_nowait()
+            except queue.Empty:
+                break
+
+            if kind == "success":
+                height, moisture, cfg, prefix = payload
+                self.last_height = height
+                self.last_moisture = moisture
+                self._show_preview(height, moisture, cfg)
+                self.status_var.set(f"Terminé. Fichiers exportés avec préfixe: {prefix}")
+                self.progress.stop()
+                self.generate_btn.state(["!disabled"])
+            elif kind == "error":
+                self.status_var.set(f"Erreur: {payload}")
+                self.progress.stop()
+                self.generate_btn.state(["!disabled"])
+                if messagebox is not None:
+                    messagebox.showerror("Erreur", str(payload))
+        self.root.after(150, self._tick_worker)
+
+    def run(self) -> None:
+        self.root.mainloop()
 
 
 def main() -> None:
-    cfg = parse_args()
+    cfg, launch_gui, output_prefix = parse_args()
+    if launch_gui:
+        gui = GeneratorGUI()
+        gui.run()
+        return
+
     height, moisture = generate_island(cfg)
-    prefix = f"island_s{cfg.size}_seed{cfg.seed}"
+    prefix = output_prefix or f"island_s{cfg.size}_seed{cfg.seed}"
     save_outputs(height, moisture, cfg, prefix)
     print(f"Génération terminée: {prefix}_heightmap_16bit.png / {prefix}_heightmap.npy")
 
