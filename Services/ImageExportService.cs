@@ -19,7 +19,7 @@ public sealed class ImageExportService
         await SaveHeight16Async(result.Height, result.Size, $"{baseName}_heightmap_16bit.png", token);
         await SaveHeightPreviewAsync(result.Height, result.Size, $"{baseName}_height_preview.png", token);
         await SaveBiomePreviewAsync(result.Biomes, result.Size, $"{baseName}_biomes_preview.png", token);
-        await SaveMinecraftBlocksCsvAsync(result.Height, result.Size, cfg.MaxHeightBlocks, $"{baseName}_blocks.csv", token);
+        await SaveMinecraftBlocksCsvAsync(result.Height, result.Size, $"{baseName}_blocks.csv", token);
     }
 
     public Bitmap BuildPreviewBitmap(float[] height, byte[] biomes, int size, int maxPreviewSize = 768)
@@ -81,7 +81,7 @@ public sealed class ImageExportService
         await img.SaveAsPngAsync(filePath, token);
     }
 
-    private static async Task SaveMinecraftBlocksCsvAsync(float[] height, int size, int maxHeightBlocks, string filePath, CancellationToken token)
+    private static async Task SaveMinecraftBlocksCsvAsync(float[] height, int size, string filePath, CancellationToken token)
     {
         await using var fs = File.Create(filePath);
         await using var writer = new StreamWriter(fs);
@@ -92,7 +92,7 @@ public sealed class ImageExportService
             for (var x = 0; x < size; x++)
             {
                 if (x > 0) await writer.WriteAsync(',');
-                var blocks = (int)MathF.Round(height[y * size + x] * maxHeightBlocks);
+                var blocks = TerrainGenerator.ToWorldY(height[y * size + x]);
                 await writer.WriteAsync(blocks.ToString());
             }
 

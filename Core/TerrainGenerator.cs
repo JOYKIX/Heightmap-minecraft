@@ -19,41 +19,79 @@ public sealed record GenerationResult(float[] Height, float[] Moisture, byte[] B
 
 public sealed class TerrainGenerator
 {
+    public const int MinTerrainY = -64;
+    public const int MaxTerrainY = 319;
+    public const int SeaLevelY = 62;
+    private const float VerticalSpan = MaxTerrainY - MinTerrainY;
+
     public GenerationResult Generate(GeneratorConfig cfg, IProgress<GenerationProgress>? progress, CancellationToken token)
     {
         var size = cfg.Size;
 
-        progress?.Report(new(GenerationStage.BaseNoise, 0.05, "Bruit de base (fBm/ridged)..."));
-        var baseMap = Noise.Fbm(size, 0.0024f, cfg.Octaves, 2.1f, 0.55f, cfg.Seed);
-        var ridges = Noise.RidgedNoise(size, 0.0034f, Math.Max(cfg.Octaves - 1, 1), cfg.Seed + 177);
-        var detail = Noise.Fbm(size, 0.008f, 4, 2.15f, 0.55f, cfg.Seed + 333);
-        var terrain = new float[size * size];
-        for (var i = 0; i < terrain.Length; i++) terrain[i] = 0.54f * baseMap[i] + 0.31f * ridges[i] + 0.15f * detail[i];
+        progress?.Report(new(GenerationStage.BaseNoise, 0.05, "Macro-relief continental..."));
+        var continental = Noise.Fbm(size, 0.00085f, 5, 2.03f, 0.56f, cfg.Seed);
+        var regional = Noise.Fbm(size, 0.0019f, 4, 2.08f, 0.57f, cfg.Seed + 91);
+        var basins = Noise.Fbm(size, 0.0012f, 4, 2.0f, 0.55f, cfg.Seed + 177);
+        var shelves = Noise.Fbm(size, 0.0045f, 4, 2.15f, 0.56f, cfg.Seed + 333);
+        var rolling = Noise.Fbm(size, 0.0068f, cfg.Octaves, 2.18f, 0.56f, cfg.Seed + 487);
+        var landRelief = Noise.Fbm(size, 0.0032f, 5, 2.1f, 0.56f, cfg.Seed + 511);
+        var mountainMacro = Noise.Fbm(size, 0.0016f, 4, 2.05f, 0.58f, cfg.Seed + 619);
+        var chainRidges = Noise.RidgedNoise(size, 0.0028f, Math.Max(cfg.Octaves - 1, 1), cfg.Seed + 701);
+        var valleyNoise = Noise.RidgedNoise(size, 0.0074f, 4, cfg.Seed + 809);
+        var micro = Noise.Fbm(size, 0.011f, 3, 2.2f, 0.54f, cfg.Seed + 883);
+        var terrainY = new float[size * size];
+
+        for (var i = 0; i < terrainY.Length; i++)
+        {
+            var continentSignal = 0.56f * continental[i] + 0.29f * regional[i] - 0.15f * basins[i];
+            var landMask = SmoothStep(0.43f, 0.64f, continentSignal);
+            var oceanFloor = 20f + shelves[i] * 30f;
+            var coastLift = SmoothStep(0.30f, 0.56f, landMask);
+            oceanFloor = Lerp(oceanFloor, 58f + shelves[i] * 4f, coastLift);
+
+            var plains = 64f + rolling[i] * 20f + (landRelief[i] - 0.5f) * 12f;
+            var mountainMask = MathF.Pow(Math.Clamp(0.62f * chainRidges[i] + 0.38f * mountainMacro[i] - 0.46f, 0f, 1f), 1.55f);
+            var mountainAmplitude = Lerp(40f, 190f, mountainMacro[i]);
+            var mountainHeight = mountainMask * mountainAmplitude;
+            var valleys = MathF.Pow(Math.Clamp(valleyNoise[i], 0f, 1f), 2.7f) * 17f;
+
+            var landY = plains + mountainHeight - valleys + (micro[i] - 0.5f) * 4f;
+            var y = Lerp(oceanFloor, landY, landMask);
+
+            if (y > 280f)
+                y = 280f + (y - 280f) * 0.35f;
+
+            terrainY[i] = Math.Clamp(y, MinTerrainY, MaxTerrainY);
+        }
         token.ThrowIfCancellationRequested();
 
-        progress?.Report(new(GenerationStage.DomainWarp, 0.2, "Domain warp..."));
-        terrain = DomainWarp(terrain, size, size * 0.032f, cfg.Seed + 999);
+        progress?.Report(new(GenerationStage.DomainWarp, 0.2, "Domain warp régional..."));
+        terrainY = DomainWarp(terrainY, size, size * 0.018f, cfg.Seed + 999);
 
-        progress?.Report(new(GenerationStage.IslandMask, 0.32, "Masque radial insulaire..."));
-        var mask = IslandMask(size, cfg.Seed + 444);
-        for (var i = 0; i < terrain.Length; i++) terrain[i] *= mask[i];
-        var shelves = Noise.Fbm(size, 0.01f, 3, 2.1f, 0.6f, cfg.Seed + 555);
-        for (var i = 0; i < terrain.Length; i++) if (mask[i] < 0.2f) terrain[i] *= 0.8f + 0.2f * shelves[i];
+        progress?.Report(new(GenerationStage.IslandMask, 0.32, "Contraintes altimétriques Minecraft..."));
+        terrainY = EnforceMinecraftBands(terrainY, size);
+        var terrain = ToNormalizedHeight(terrainY);
         terrain = Erosion.GaussianBlur5(terrain, size);
 
         progress?.Report(new(GenerationStage.HydraulicErosion, 0.45, "Érosion hydraulique..."));
         terrain = Erosion.HydraulicErosion(terrain, size, cfg.ErosionDroplets, cfg.ErosionSteps, cfg.Seed + 666, token);
+        terrainY = ToWorldHeight(terrain);
+        terrainY = EnforceMinecraftBands(terrainY, size);
+        terrain = ToNormalizedHeight(terrainY);
 
         progress?.Report(new(GenerationStage.ThermalErosion, 0.7, "Érosion thermique..."));
         terrain = Erosion.ThermalErosion(terrain, size, cfg.ThermalIterations);
+        terrainY = ToWorldHeight(terrain);
+        terrainY = EnforceMinecraftBands(terrainY, size);
+        terrain = ToNormalizedHeight(terrainY);
 
-        NormalizeAndGamma(terrain, 1.14f);
+        NormalizeAndGamma(terrain, 1f);
 
         progress?.Report(new(GenerationStage.Moisture, 0.82, "Calcul humidité..."));
-        var moisture = BiomeGenerator.MoistureMap(terrain, size, cfg.SeaLevel, cfg.MoistureWindAngleDeg, cfg.Seed + 777);
+        var moisture = BiomeGenerator.MoistureMap(terrain, size, ToNormalizedY(SeaLevelY), cfg.MoistureWindAngleDeg, cfg.Seed + 777);
 
         progress?.Report(new(GenerationStage.Biomes, 0.92, "Calcul biomes..."));
-        var biomes = BiomeGenerator.BuildBiomePreview(terrain, moisture, size, cfg.SeaLevel);
+        var biomes = BiomeGenerator.BuildBiomePreview(terrain, moisture, size, ToNormalizedY(SeaLevelY));
 
         progress?.Report(new(GenerationStage.Biomes, 1.0, "Génération terminée."));
         return new GenerationResult(terrain, moisture, biomes, size);
@@ -61,13 +99,9 @@ public sealed class TerrainGenerator
 
     private static void NormalizeAndGamma(float[] terrain, float gamma)
     {
-        var min = terrain.Min();
-        var max = terrain.Max();
-        var span = max - min + 1e-8f;
         for (var i = 0; i < terrain.Length; i++)
         {
-            var n = (terrain[i] - min) / span;
-            terrain[i] = MathF.Pow(Math.Clamp(n, 0f, 1f), gamma);
+            terrain[i] = MathF.Pow(Math.Clamp(terrain[i], 0f, 1f), gamma);
         }
     }
 
@@ -91,32 +125,51 @@ public sealed class TerrainGenerator
         return dst;
     }
 
-    private static float[] IslandMask(int size, int seed)
+    private static float[] EnforceMinecraftBands(float[] terrainY, int size)
     {
-        _ = seed;
-        var mask = new float[size * size];
-        var cx = (size - 1) * 0.5f;
-        var cy = (size - 1) * 0.5f;
-        var coastNoise = Noise.Fbm(size, 0.015f, 4, 2.25f, 0.55f, seed);
-
-        for (var y = 0; y < size; y++)
+        var adjusted = terrainY.ToArray();
+        for (var i = 0; i < adjusted.Length; i++)
         {
-            for (var x = 0; x < size; x++)
-            {
-                var nx = (x - cx) / (size * 0.5f);
-                var ny = (y - cy) / (size * 0.5f);
-                var r = MathF.Sqrt(nx * nx + ny * ny);
-                var angle = MathF.Atan2(ny, nx);
-                var angularVariation = 0.08f * MathF.Sin(3f * angle + 0.5f)
-                                       + 0.06f * MathF.Sin(5f * angle + 1.7f)
-                                       + 0.04f * MathF.Sin(9f * angle + 2.2f);
-                var idx = y * size + x;
-                var effectiveR = r + angularVariation + coastNoise[idx] * 0.17f;
-                var core = Math.Clamp(1f - effectiveR, 0f, 1f);
-                mask[idx] = MathF.Pow(core, 1.25f);
-            }
+            var y = adjusted[i];
+            if (y < 15f) y = 15f + (y - 15f) * 0.18f;
+            if (y is > 58f and < 66f) y = Lerp(y, 62f, 0.18f);
+            if (y > 250f) y = 250f + (y - 250f) * 0.48f;
+            adjusted[i] = Math.Clamp(y, MinTerrainY, MaxTerrainY);
         }
 
-        return mask;
+        return Erosion.GaussianBlur5(adjusted, size, 1);
+    }
+
+    public static float ToNormalizedY(float worldY) => (worldY - MinTerrainY) / VerticalSpan;
+
+    public static int ToWorldY(float normalized) =>
+        (int)MathF.Round(MinTerrainY + Math.Clamp(normalized, 0f, 1f) * VerticalSpan);
+
+    private static float[] ToNormalizedHeight(float[] terrainY)
+    {
+        var normalized = new float[terrainY.Length];
+        for (var i = 0; i < terrainY.Length; i++)
+            normalized[i] = ToNormalizedY(terrainY[i]);
+        return normalized;
+    }
+
+    private static float[] ToWorldHeight(float[] normalized)
+    {
+        var terrainY = new float[normalized.Length];
+        for (var i = 0; i < normalized.Length; i++)
+            terrainY[i] = ToWorldY(normalized[i]);
+        return terrainY;
+    }
+
+    private static float SmoothStep(float edge0, float edge1, float x)
+    {
+        var t = Math.Clamp((x - edge0) / (edge1 - edge0 + 1e-8f), 0f, 1f);
+        return t * t * (3f - 2f * t);
+    }
+
+    private static float Lerp(float a, float b, float t)
+    {
+        var clamped = Math.Clamp(t, 0f, 1f);
+        return a + (b - a) * clamped;
     }
 }

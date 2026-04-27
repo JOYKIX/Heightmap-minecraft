@@ -18,8 +18,7 @@
 
           <TextBlock Text="Taille"/><TextBox Text="{Binding Size}"/>
           <TextBlock Text="Seed"/><TextBox Text="{Binding Seed}"/>
-          <TextBlock Text="Niveau de la mer [0..1]"/><TextBox Text="{Binding SeaLevel}"/>
-          <TextBlock Text="Hauteur max (blocs)"/><TextBox Text="{Binding MaxHeightBlocks}"/>
+          <TextBlock Text="Niveau de la mer (Y, fixe pour Minecraft moderne)"/><TextBox Text="{Binding SeaLevel}"/>
           <TextBlock Text="Octaves"/><TextBox Text="{Binding Octaves}"/>
           <TextBlock Text="Gouttelettes d'érosion"/><TextBox Text="{Binding ErosionDroplets}"/>
           <TextBlock Text="Étapes d'érosion"/><TextBox Text="{Binding ErosionSteps}"/>

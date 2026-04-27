@@ -37,8 +37,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public int Size { get; set; }
     public int Seed { get; set; }
-    public float SeaLevel { get; set; }
-    public int MaxHeightBlocks { get; set; }
+    public int SeaLevel { get; set; }
     public int Octaves { get; set; }
     public int ErosionDroplets { get; set; }
     public int ErosionSteps { get; set; }
@@ -73,8 +72,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
 
         Seed = 42;
-        SeaLevel = 0.45f;
-        MaxHeightBlocks = 320;
+        SeaLevel = TerrainGenerator.SeaLevelY;
         WindAngle = 35f;
         NotifyAllInputs();
     }
@@ -152,7 +150,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         Size = Size,
         Seed = Seed,
         SeaLevel = SeaLevel,
-        MaxHeightBlocks = MaxHeightBlocks,
+        MinY = TerrainGenerator.MinTerrainY,
+        MaxY = TerrainGenerator.MaxTerrainY,
         Octaves = Octaves,
         ErosionDroplets = ErosionDroplets,
         ErosionSteps = ErosionSteps,
@@ -166,7 +165,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (Size < 128 || Size > 4096) return "La taille doit être entre 128 et 4096.";
         if ((Size & (Size - 1)) != 0) return "La taille doit être une puissance de 2 (512, 1024, 2048...).";
-        if (SeaLevel is < 0 or > 1) return "Le niveau de la mer doit être entre 0 et 1.";
+        if (SeaLevel != TerrainGenerator.SeaLevelY) return $"Le niveau de la mer doit être fixé à {TerrainGenerator.SeaLevelY} pour Minecraft moderne.";
         if (Octaves < 1 || Octaves > 12) return "Les octaves doivent être entre 1 et 12.";
         if (ErosionDroplets < 0) return "Le nombre de gouttelettes doit être positif.";
         if (ErosionSteps < 1 || ThermalIterations < 0) return "Étapes/itérations invalides.";
