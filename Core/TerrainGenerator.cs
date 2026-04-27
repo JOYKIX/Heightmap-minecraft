@@ -48,11 +48,25 @@ public sealed class TerrainGenerator
 
         var terrainY = new float[cellCount];
         var ruggedness = new float[cellCount];
+        var continentSignalField = new float[cellCount];
 
         for (var i = 0; i < cellCount; i++)
         {
-            var continentSignal = 0.55f * continental[i] + 0.22f * regional[i] - 0.17f * basins[i] + 0.18f * (1f - falloff[i]);
-            var landMask = SmoothStep(0.44f, 0.62f, continentSignal);
+            continentSignalField[i] =
+                0.68f * continental[i] +
+                0.24f * regional[i] -
+                0.16f * basins[i] +
+                0.16f * landDetail[i] +
+                0.22f * (1f - falloff[i]);
+        }
+
+        var targetLandRatio = Math.Clamp(0.56f - cfg.OceanCoverageBias * 0.3f, 0.33f, 0.78f);
+        var landThreshold = DetermineLandThreshold(continentSignalField, falloff, targetLandRatio);
+
+        for (var i = 0; i < cellCount; i++)
+        {
+            var inlandBias = (1f - falloff[i]) * 0.1f;
+            var landMask = SmoothStep(landThreshold - 0.08f, landThreshold + 0.1f, continentSignalField[i] + inlandBias);
 
             var oceanFloor = Lerp(20f, 36f, shelves[i]);
             oceanFloor = Lerp(oceanFloor, 50f, SmoothStep(0.32f, 0.62f, 1f - falloff[i]));
@@ -153,11 +167,51 @@ public sealed class TerrainGenerator
                 var edge = Math.Min(Math.Min(x, y), Math.Min(size - 1 - x, size - 1 - y));
                 var edgeT = 1f - Math.Clamp(edge / (float)borderBand, 0f, 1f);
                 var oceanTarget = Lerp(22f, 48f, shelves[idx]);
-                var force = MathF.Max(MathF.Pow(edgeT, 1.75f), MathF.Pow(falloff[idx], 1.5f));
+                var coastForce = MathF.Pow(Math.Clamp((falloff[idx] - 0.6f) / 0.4f, 0f, 1f), 1.4f);
+                var force = MathF.Max(MathF.Pow(edgeT, 1.75f), coastForce);
                 var forcedY = Lerp(terrainY[idx], MathF.Min(oceanTarget, seaLevel - 1f), force);
                 terrainY[idx] = MathF.Min(forcedY, seaLevel - (1f + edgeT * 8f));
             }
         }
+    }
+
+    private static float DetermineLandThreshold(float[] continentSignal, float[] falloff, float targetLandRatio)
+    {
+        const int bins = 512;
+        var histogram = new int[bins];
+        var minSignal = float.PositiveInfinity;
+        var maxSignal = float.NegativeInfinity;
+
+        for (var i = 0; i < continentSignal.Length; i++)
+        {
+            var inlandBoost = (1f - falloff[i]) * 0.14f - falloff[i] * 0.04f;
+            var signal = continentSignal[i] + inlandBoost;
+            minSignal = MathF.Min(minSignal, signal);
+            maxSignal = MathF.Max(maxSignal, signal);
+        }
+
+        if (maxSignal - minSignal < 1e-5f)
+            return minSignal;
+
+        var scale = (bins - 1) / (maxSignal - minSignal);
+        for (var i = 0; i < continentSignal.Length; i++)
+        {
+            var inlandBoost = (1f - falloff[i]) * 0.14f - falloff[i] * 0.04f;
+            var signal = continentSignal[i] + inlandBoost;
+            var bin = (int)MathF.Round((signal - minSignal) * scale);
+            histogram[Math.Clamp(bin, 0, bins - 1)]++;
+        }
+
+        var targetOceanCells = (int)MathF.Round((1f - targetLandRatio) * continentSignal.Length);
+        var cumulative = 0;
+        for (var b = 0; b < bins; b++)
+        {
+            cumulative += histogram[b];
+            if (cumulative >= targetOceanCells)
+                return minSignal + b / scale;
+        }
+
+        return maxSignal;
     }
 
     private static float[] EnforceMinecraftAltitudeBands(float[] terrainY, int size, int seaLevel, int minY, int maxY)
