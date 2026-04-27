@@ -4,7 +4,7 @@
         Title="Minecraft Heightmap Generator"
         Width="1280" Height="860"
         MinWidth="980" MinHeight="700">
-  <Grid ColumnDefinitions="340,*" RowDefinitions="Auto,*" Margin="16" ColumnSpacing="16">
+  <Grid ColumnDefinitions="340,16,*" RowDefinitions="Auto,*" Margin="16">
     <Border Grid.Column="0" Grid.RowSpan="2" Padding="12" Background="#1D1D1D" CornerRadius="8">
       <ScrollViewer>
         <StackPanel Spacing="8">
@@ -40,8 +40,8 @@
       </ScrollViewer>
     </Border>
 
-    <TextBlock Grid.Column="1" Grid.Row="0" Text="Aperçu" FontSize="20" FontWeight="Bold" />
-    <Border Grid.Column="1" Grid.Row="1" CornerRadius="8" Padding="8" Background="#121212">
+    <TextBlock Grid.Column="2" Grid.Row="0" Text="Aperçu" FontSize="20" FontWeight="Bold" />
+    <Border Grid.Column="2" Grid.Row="1" CornerRadius="8" Padding="8" Background="#121212">
       <ScrollViewer>
         <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
       </ScrollViewer>
