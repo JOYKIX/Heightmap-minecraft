@@ -45,7 +45,7 @@ export function renderProcedural(appState) {
           ${option(appState.procedural.style, 'balanced', 'Équilibré')}
           ${option(appState.procedural.style, 'archipelago', 'Archipel')}
           ${option(appState.procedural.style, 'mountainous', 'Montagneux')}
-          ${option(appState.procedural.style, 'dramatic_coast', 'Côtier dramatique')}
+          ${option(appState.procedural.style, 'dramatic', 'Dramatique')}
         </select>
       </label>
       <label>Seed <input id="procSeed" value="${appState.procedural.seed}" /></label>
