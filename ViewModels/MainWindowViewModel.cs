@@ -101,6 +101,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             });
 
             _lastResult = await Task.Run(() => _generator.Generate(config, progress, _cts.Token), _cts.Token);
+            RaiseCommandCanExecuteChanged();
+
+            PreviewImage?.Dispose();
             PreviewImage = _exportService.BuildPreviewBitmap(_lastResult.Height, _lastResult.Biomes, _lastResult.Size);
             Status = "Terminé. Cliquez sur Exporter pour sauvegarder les fichiers.";
         }
@@ -123,7 +126,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private async Task ExportAsync()
     {
-        if (_lastResult is null) return;
+        if (_lastResult is null)
+        {
+            Status = "Aucune génération disponible. Cliquez d'abord sur Générer.";
+            return;
+        }
 
         var config = BuildConfig();
         try
@@ -164,6 +171,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         if (ErosionDroplets < 0) return "Le nombre de gouttelettes doit être positif.";
         if (ErosionSteps < 1 || ThermalIterations < 0) return "Étapes/itérations invalides.";
         if (string.IsNullOrWhiteSpace(OutputDirectory)) return "Choisissez un dossier de sortie.";
+        if (Path.GetInvalidPathChars().Any(OutputDirectory.Contains)) return "Le dossier de sortie contient des caractères invalides.";
         return null;
     }
 
