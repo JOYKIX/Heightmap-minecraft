@@ -4,8 +4,9 @@ public sealed class GeneratorConfig
 {
     public int Size { get; set; } = 1024;
     public int Seed { get; set; } = 42;
-    public float SeaLevel { get; set; } = 0.45f;
-    public int MaxHeightBlocks { get; set; } = 320;
+    public int SeaLevel { get; set; } = Core.TerrainGenerator.SeaLevelY;
+    public int MinY { get; set; } = Core.TerrainGenerator.MinTerrainY;
+    public int MaxY { get; set; } = Core.TerrainGenerator.MaxTerrainY;
     public int Octaves { get; set; } = 7;
     public int ErosionDroplets { get; set; } = 220_000;
     public int ErosionSteps { get; set; } = 45;
