@@ -9,6 +9,7 @@ Générateur procédural d'île **ultra réaliste** pour Minecraft (heightmap 16
 - Érosion hydraulique (simulation de gouttelettes) + érosion thermique (talus).
 - Carte d'humidité basée sur un vent dominant + aperçu des biomes.
 - Export prêt à intégrer dans des pipelines de création de terrain.
+- Interface graphique interactive (Tkinter) pour piloter tous les paramètres et voir un aperçu.
 
 ## Installation
 
@@ -24,6 +25,18 @@ pip install numpy pillow
 python island_generator.py --size 1024 --seed 1337 --sea-level 0.45 --max-height-blocks 320
 ```
 
+### Mode interface graphique
+
+```bash
+python island_generator.py --gui
+```
+
+Depuis l'UI, vous pouvez:
+- Modifier tous les paramètres de génération.
+- Lancer la génération sans ligne de commande.
+- Sauvegarder automatiquement les sorties avec un préfixe personnalisé.
+- Visualiser un aperçu du relief/biomes directement dans la fenêtre.
+
 Paramètres clés :
 
 - `--size` : résolution carrée de la heightmap.
@@ -31,6 +44,8 @@ Paramètres clés :
 - `--sea-level` : niveau marin normalisé `[0..1]`.
 - `--erosion-droplets` : qualité/temps de l'érosion hydraulique (plus = plus réaliste, plus lent).
 - `--wind-angle` : direction dominante du vent pour l'humidité.
+- `--gui` : ouvre l'interface graphique.
+- `--output-prefix` : impose un préfixe de sortie (mode CLI).
 
 ## Fichiers générés
 
