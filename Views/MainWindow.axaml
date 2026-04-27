@@ -1,0 +1,50 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="HeightmapMinecraft.Views.MainWindow"
+        Title="Minecraft Heightmap Generator"
+        Width="1280" Height="860"
+        MinWidth="980" MinHeight="700">
+  <Grid ColumnDefinitions="340,*" RowDefinitions="Auto,*" Margin="16" ColumnSpacing="16">
+    <Border Grid.Column="0" Grid.RowSpan="2" Padding="12" Background="#1D1D1D" CornerRadius="8">
+      <ScrollViewer>
+        <StackPanel Spacing="8">
+          <TextBlock Text="Paramètres" FontSize="20" FontWeight="Bold" />
+
+          <ComboBox x:Name="PresetCombo" SelectedIndex="1" SelectionChanged="PresetCombo_OnSelectionChanged">
+            <ComboBoxItem Content="Fast" />
+            <ComboBoxItem Content="Balanced" />
+            <ComboBoxItem Content="High Quality" />
+          </ComboBox>
+
+          <TextBlock Text="Taille"/><TextBox Text="{Binding Size}"/>
+          <TextBlock Text="Seed"/><TextBox Text="{Binding Seed}"/>
+          <TextBlock Text="Niveau de la mer [0..1]"/><TextBox Text="{Binding SeaLevel}"/>
+          <TextBlock Text="Hauteur max (blocs)"/><TextBox Text="{Binding MaxHeightBlocks}"/>
+          <TextBlock Text="Octaves"/><TextBox Text="{Binding Octaves}"/>
+          <TextBlock Text="Gouttelettes d'érosion"/><TextBox Text="{Binding ErosionDroplets}"/>
+          <TextBlock Text="Étapes d'érosion"/><TextBox Text="{Binding ErosionSteps}"/>
+          <TextBlock Text="Itérations thermiques"/><TextBox Text="{Binding ThermalIterations}"/>
+          <TextBlock Text="Angle du vent"/><TextBox Text="{Binding WindAngle}"/>
+          <TextBlock Text="Dossier de sortie"/><TextBox Text="{Binding OutputDirectory}"/>
+          <TextBlock Text="Préfixe des fichiers"/><TextBox Text="{Binding FilePrefix}"/>
+
+          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
+            <Button Content="Générer" Command="{Binding GenerateCommand}" Width="100"/>
+            <Button Content="Annuler" Command="{Binding CancelCommand}" Width="100"/>
+            <Button Content="Sauvegarder / Exporter" Command="{Binding ExportCommand}" Width="160"/>
+          </StackPanel>
+
+          <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressValue}" Height="16"/>
+          <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <TextBlock Grid.Column="1" Grid.Row="0" Text="Aperçu" FontSize="20" FontWeight="Bold" />
+    <Border Grid.Column="1" Grid.Row="1" CornerRadius="8" Padding="8" Background="#121212">
+      <ScrollViewer>
+        <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
+      </ScrollViewer>
+    </Border>
+  </Grid>
+</Window>
