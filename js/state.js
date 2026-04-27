@@ -10,9 +10,9 @@ export const appState = {
   procedural: {
     seed: 'island-001',
     resolution: 1024,
-    relief: 'normal',
+    relief: 'ultra',
     islandSize: 'medium',
-    style: 'balanced',
+    style: 'ultra_realistic',
     result: null,
     stats: null
   },

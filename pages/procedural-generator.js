@@ -29,6 +29,7 @@ export function renderProcedural(appState) {
           ${option(appState.procedural.islandSize, 'small', 'Petite')}
           ${option(appState.procedural.islandSize, 'medium', 'Moyenne')}
           ${option(appState.procedural.islandSize, 'large', 'Grande')}
+          ${option(appState.procedural.islandSize, 'huge', 'Énorme')}
           ${option(appState.procedural.islandSize, 'immense', 'Immense')}
         </select>
       </label>
@@ -38,6 +39,7 @@ export function renderProcedural(appState) {
           ${option(appState.procedural.relief, 'normal', 'Normal')}
           ${option(appState.procedural.relief, 'mountainous', 'Montagneux')}
           ${option(appState.procedural.relief, 'extreme', 'Extrême')}
+          ${option(appState.procedural.relief, 'ultra', 'Ultra réaliste')}
         </select>
       </label>
       <label>Style
@@ -46,6 +48,7 @@ export function renderProcedural(appState) {
           ${option(appState.procedural.style, 'archipelago', 'Archipel')}
           ${option(appState.procedural.style, 'mountainous', 'Montagneux')}
           ${option(appState.procedural.style, 'dramatic', 'Dramatique')}
+          ${option(appState.procedural.style, 'ultra_realistic', 'Ultra naturel')}
         </select>
       </label>
       <label>Seed <input id="procSeed" value="${appState.procedural.seed}" /></label>

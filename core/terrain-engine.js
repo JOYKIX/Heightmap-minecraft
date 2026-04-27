@@ -14,7 +14,8 @@ const RELIEF = {
   soft: { macroAmp: 12, hillAmp: 8, mountainAmp: 56, valleyAmp: 8, erosionPasses: 2, riverDepth: 2 },
   normal: { macroAmp: 18, hillAmp: 12, mountainAmp: 88, valleyAmp: 12, erosionPasses: 3, riverDepth: 3 },
   mountainous: { macroAmp: 24, hillAmp: 16, mountainAmp: 132, valleyAmp: 18, erosionPasses: 5, riverDepth: 5 },
-  extreme: { macroAmp: 32, hillAmp: 20, mountainAmp: 176, valleyAmp: 24, erosionPasses: 7, riverDepth: 6 }
+  extreme: { macroAmp: 32, hillAmp: 20, mountainAmp: 176, valleyAmp: 24, erosionPasses: 7, riverDepth: 6 },
+  ultra: { macroAmp: 36, hillAmp: 24, mountainAmp: 212, valleyAmp: 28, erosionPasses: 9, riverDepth: 7 }
 };
 
 const STYLE = {
@@ -22,7 +23,8 @@ const STYLE = {
   archipelago: { warp: 0.3, coastBreak: 0.45, mountainBias: 0.5, archipelago: 1, drama: 0.35 },
   mountainous: { warp: 0.2, coastBreak: 0.3, mountainBias: 0.66, archipelago: 0.15, drama: 0.5 },
   dramatic: { warp: 0.32, coastBreak: 0.56, mountainBias: 0.62, archipelago: 0.35, drama: 1 },
-  dramatic_coast: { warp: 0.32, coastBreak: 0.56, mountainBias: 0.62, archipelago: 0.35, drama: 1 }
+  dramatic_coast: { warp: 0.32, coastBreak: 0.56, mountainBias: 0.62, archipelago: 0.35, drama: 1 },
+  ultra_realistic: { warp: 0.36, coastBreak: 0.64, mountainBias: 0.72, archipelago: 0.28, drama: 0.84 }
 };
 
 const PIPELINE = [
@@ -42,12 +44,14 @@ const PIPELINE = [
   '14. Générer les plateaux',
   '15. Générer les vallées',
   '16. Générer les rivières',
-  '17. Appliquer érosion légère',
-  '18. Nettoyer les artefacts',
-  '19. Quantifier en Y Minecraft entier',
-  '20. Convertir en 16-bit grayscale',
-  '21. Afficher preview',
-  '22. Exporter PNG'
+  '17. Appliquer falaises littorales',
+  '18. Appliquer érosion hydraulique',
+  '19. Appliquer weathering thermique',
+  '20. Nettoyer les artefacts',
+  '21. Quantifier en Y Minecraft entier',
+  '22. Convertir en 16-bit grayscale',
+  '23. Afficher preview',
+  '24. Exporter PNG'
 ];
 
 function hashString(str) {
@@ -97,6 +101,12 @@ function ridgedFbm(nx, ny, seed, octaves = 4) {
   return ampSum > 0 ? sum / ampSum : 0;
 }
 
+function domainWarpedNoise(nx, ny, seed, strength = 0.22, scale = 1.8, octaves = 4) {
+  const warpX = (fbm2D(nx * scale - 15.2, ny * scale + 4.9, octaves, 2, 0.5, seed + 2001) - 0.5) * strength;
+  const warpY = (fbm2D(nx * scale + 8.1, ny * scale - 11.4, octaves, 2, 0.5, seed + 2002) - 0.5) * strength;
+  return fbm2D((nx + warpX) * scale, (ny + warpY) * scale, octaves, 2, 0.5, seed + 2003);
+}
+
 function createIslandBlobs(seed, styleCfg) {
   const rand = createSeededRandom(`blob-${seed}`);
   const blobCount = 4 + Math.floor(rand() * 3);
@@ -131,6 +141,7 @@ function generateLandPotential(width, height, config, seed) {
       const wy = ny + warpY;
 
       const continentalNoise = (fbm2D(nx * 0.8 - 1.7, ny * 0.8 + 2.3, 4, 2, 0.5, seed + 16) - 0.5) * 0.38;
+      const warpedContinent = (domainWarpedNoise(nx, ny, seed + 17, 0.36, 1.25, 5) - 0.5) * 0.42;
       let blobShape = 0;
       for (const blob of blobs) {
         const dx = (wx - blob.cx) / blob.sx;
@@ -146,14 +157,17 @@ function generateLandPotential(width, height, config, seed) {
       const macro = (fbm2D(nx * 1.2 - 7, ny * 1.2 + 2, 3, 2, 0.5, seed + 30) - 0.5) * 0.5;
       const asym = (fbm2D(nx * 0.8 + 80, ny * 0.8 - 35, 3, 2, 0.5, seed + 40) - 0.5) * 0.62;
       const shelf = (fbm2D(wx * 2.4 - 9, wy * 2.4 + 4, 3, 2, 0.5, seed + 41) - 0.5) * 0.35;
+      const tectonic = ridgedFbm(nx * 0.55 + 25, ny * 0.55 - 16, seed + 42, 3) * 0.22;
 
       land[i] = radial * 0.92
         + blobShape * 0.78
         + continentalNoise * 0.26
+        + warpedContinent * 0.24
         + coast * (0.22 + styleCfg.coastBreak * 0.15)
         + macro * 0.38
         + asym * 0.34
-        + shelf * 0.18;
+        + shelf * 0.18
+        + tectonic;
     }
   }
 
@@ -366,10 +380,13 @@ function generateOceanHeights(heightMap, landMask, distanceToLand, width, height
       const i = y * width + x;
       if (landMask[i]) continue;
       const d = clamp(distanceToLand[i] / Math.max(80, width * 0.14), 0, 1);
-      let oceanY = lerp(62, 5, d);
-      if (d > 0.65) oceanY = lerp(oceanY, config.minY + 10, (d - 0.65) / 0.35);
+      const shelf = smoothstep(0.08, 0.42, d);
+      const abyss = smoothstep(0.55, 1, d);
+      let oceanY = lerp(63, 34, shelf);
+      oceanY = lerp(oceanY, config.minY + 14, abyss);
       const n = (fbm2D(x / width * 6.5, y / height * 6.5, 3, 2, 0.5, seed + 410) - 0.5) * 8;
-      heightMap[i] = Math.min(config.seaLevel - 1, oceanY + n);
+      const trench = smoothstep(0.75, 1, ridgedFbm(x / width * 1.1 - 2, y / height * 1.1 + 6, seed + 411, 4)) * 12;
+      heightMap[i] = Math.min(config.seaLevel - 1, oceanY + n - trench);
     }
   }
 }
@@ -390,6 +407,7 @@ function generateLandBaseHeight(heightMap, landMask, distanceToWater, width, hei
         let base = 72;
         base += coastRise * 18;
         base += (fbm2D(x / width * 2.2, y / height * 2.2, 4, 2, 0.5, seed + 510) - 0.5) * 16;
+        base += (domainWarpedNoise(x / width, y / height, seed + 511, 0.22, 3.2, 4) - 0.5) * 11;
         heightMap[i] = base;
       }
     }
@@ -398,7 +416,7 @@ function generateLandBaseHeight(heightMap, landMask, distanceToWater, width, hei
 
 function generateMountainMask(landMask, distanceToWater, width, height, config, seed) {
   const styleCfg = STYLE[config.style] || STYLE.balanced;
-  const reliefBias = { soft: 0.68, normal: 0.58, mountainous: 0.48, extreme: 0.4 }[config.relief] ?? 0.58;
+  const reliefBias = { soft: 0.68, normal: 0.58, mountainous: 0.48, extreme: 0.4, ultra: 0.34 }[config.relief] ?? 0.58;
   const mask = new Float32Array(width * height);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -445,8 +463,10 @@ function applyMountains(heightMap, landMask, mountainMask, distanceToWater, widt
       if (!landMask[i]) continue;
       const inland = smoothstep(8, Math.max(32, width * 0.09), distanceToWater[i]);
       const ridge = ridgedFbm(x / width * 3.2, y / height * 3.2, seed + 900, 5);
+      const peak = smoothstep(0.62, 0.94, ridgedFbm(x / width * 5.8 - 9, y / height * 5.8 + 12, seed + 901, 4));
       const m = Math.max(mountainMask[i], inland * 0.22);
       heightMap[i] += ridge * ridge * m * reliefCfg.mountainAmp;
+      heightMap[i] += peak * peak * m * reliefCfg.mountainAmp * 0.35;
     }
   }
 }
@@ -473,6 +493,18 @@ function applyValleys(heightMap, landMask, width, height, reliefCfg, seed) {
       const valleyMask = smoothstep(0.66, 0.9, directional);
       heightMap[i] -= valleyMask * reliefCfg.valleyAmp;
     }
+  }
+}
+
+function applyCoastalCliffs(heightMap, landMask, distanceToWater, width, height, seed) {
+  for (let i = 0; i < heightMap.length; i++) {
+    if (!landMask[i]) continue;
+    const cliffBand = 1 - smoothstep(3, Math.max(20, width * 0.04), distanceToWater[i]);
+    if (cliffBand <= 0) continue;
+    const cx = (i % width) / width;
+    const cy = Math.floor(i / width) / height;
+    const cliffIntent = smoothstep(0.56, 0.9, ridgedFbm(cx * 6.2, cy * 6.2, seed + 1310, 3));
+    heightMap[i] += cliffBand * cliffIntent * 10;
   }
 }
 
@@ -504,16 +536,17 @@ function traceRivers(heightMap, landMask, width, height, seaLevel, reliefCfg, rn
       path.push(cur);
       if (!landMask[cur] || heightMap[cur] <= seaLevel + 1) break;
 
-      const lateral = (rng() - 0.5) * 0.2;
+      const lateral = (rng() - 0.5) * 0.08;
       const candidates = [
         cur - 1, cur + 1, cur - width, cur + width,
         cur - width - 1, cur - width + 1, cur + width - 1, cur + width + 1
       ];
       let next = cur;
-      let best = heightMap[cur] + 0.2;
+      let best = heightMap[cur] + 0.25;
       for (const ni of candidates) {
         if (ni < 0 || ni >= heightMap.length) continue;
-        const score = heightMap[ni] + lateral;
+        const flowDirBoost = (ni === cur - width || ni === cur + width) ? 0 : 0.04;
+        const score = heightMap[ni] + lateral + flowDirBoost;
         if (score < best) {
           best = score;
           next = ni;
@@ -550,7 +583,7 @@ function traceRivers(heightMap, landMask, width, height, seaLevel, reliefCfg, rn
   return { riverMask, riverCount };
 }
 
-function applyErosion(heightMap, landMask, width, height, passes) {
+function applyHydraulicErosion(heightMap, landMask, width, height, passes) {
   const copy = new Float32Array(heightMap.length);
   for (let p = 0; p < passes; p++) {
     copy.set(heightMap);
@@ -573,6 +606,27 @@ function applyErosion(heightMap, landMask, width, height, passes) {
           heightMap[i] -= move;
           if (landMask[target]) heightMap[target] += move * 0.65;
         }
+      }
+    }
+  }
+}
+
+function applyThermalWeathering(heightMap, landMask, width, height, passes) {
+  const copy = new Float32Array(heightMap.length);
+  for (let p = 0; p < passes; p++) {
+    copy.set(heightMap);
+    for (let y = 1; y < height - 1; y++) {
+      for (let x = 1; x < width - 1; x++) {
+        const i = y * width + x;
+        if (!landMask[i]) continue;
+        const neighbors = [i - 1, i + 1, i - width, i + width];
+        let delta = 0;
+        for (const ni of neighbors) {
+          if (!landMask[ni]) continue;
+          const slope = copy[i] - copy[ni];
+          if (slope > 5) delta -= (slope - 5) * 0.08;
+        }
+        heightMap[i] += delta;
       }
     }
   }
@@ -706,7 +760,9 @@ export function generateProceduralIsland(config) {
   applyValleys(heightMap, landMask, width, height, reliefCfg, seed);
 
   const riverResult = traceRivers(heightMap, landMask, width, height, config.seaLevel, reliefCfg, rng);
-  applyErosion(heightMap, landMask, width, height, reliefCfg.erosionPasses);
+  applyCoastalCliffs(heightMap, landMask, distanceToWater, width, height, seed);
+  applyHydraulicErosion(heightMap, landMask, width, height, reliefCfg.erosionPasses);
+  applyThermalWeathering(heightMap, landMask, width, height, Math.max(2, Math.round(reliefCfg.erosionPasses * 0.6)));
   reinforceRelief(heightMap, landMask, distanceToWater, width, height, reliefCfg, seed);
   cleanupHeights(heightMap, landMask, distanceToWater, width, height, config);
 
