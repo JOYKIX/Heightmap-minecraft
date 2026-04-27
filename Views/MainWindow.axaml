@@ -1,49 +1,157 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="HeightmapMinecraft.Views.MainWindow"
-        Title="Minecraft Heightmap Generator"
-        Width="1280" Height="860"
-        MinWidth="980" MinHeight="700">
-  <Grid ColumnDefinitions="340,16,*" RowDefinitions="Auto,*" Margin="16">
-    <Border Grid.Column="0" Grid.RowSpan="2" Padding="12" Background="#1D1D1D" CornerRadius="8">
+        Title="Minecraft Map Creator"
+        Width="1440" Height="920"
+        MinWidth="1120" MinHeight="760"
+        Background="#0F1115">
+  <Window.Styles>
+    <Style Selector="TextBlock.sectionTitle">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="#F2F5F7" />
+    </Style>
+    <Style Selector="TextBlock.cardTitle">
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#F2F5F7" />
+    </Style>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="#181B22" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Padding" Value="14" />
+      <Setter Property="BorderBrush" Value="#272C38" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#4CC16D" />
+      <Setter Property="Foreground" Value="#08120B" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="16,10" />
+    </Style>
+  </Window.Styles>
+
+  <Grid ColumnDefinitions="560,16,*" RowDefinitions="*" Margin="16">
+    <Border Grid.Column="0" Classes="card">
       <ScrollViewer>
-        <StackPanel Spacing="8">
-          <TextBlock Text="Paramètres" FontSize="20" FontWeight="Bold" />
+        <StackPanel Spacing="14">
+          <TextBlock Classes="sectionTitle" Text="Créer une map Minecraft rapidement" />
+          <TextBlock Text="Choisissez un style → Ajustez rapidement → Cliquez Générer." Foreground="#A9B2C3" />
 
-          <ComboBox x:Name="PresetCombo" SelectedIndex="1" SelectionChanged="PresetCombo_OnSelectionChanged">
-            <ComboBoxItem Content="Fast" />
-            <ComboBoxItem Content="Balanced" />
-            <ComboBoxItem Content="High Quality" />
-          </ComboBox>
+          <Border Classes="card">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="cardTitle" Text="1) Type de Monde" />
+              <ComboBox ItemsSource="{Binding WorldTypes}" SelectedItem="{Binding SelectedWorldType}" />
+              <TextBlock Text="Preset Minecraft appliqué automatiquement." Foreground="#8BD9A2" />
+            </StackPanel>
+          </Border>
 
-          <TextBlock Text="Taille"/><TextBox Text="{Binding Size}"/>
-          <TextBlock Text="Seed"/><TextBox Text="{Binding Seed}"/>
-          <TextBlock Text="Niveau de la mer (Y, fixe pour Minecraft moderne)"/><TextBox Text="{Binding SeaLevel}"/>
-          <TextBlock Text="Octaves"/><TextBox Text="{Binding Octaves}"/>
-          <TextBlock Text="Gouttelettes d'érosion"/><TextBox Text="{Binding ErosionDroplets}"/>
-          <TextBlock Text="Étapes d'érosion"/><TextBox Text="{Binding ErosionSteps}"/>
-          <TextBlock Text="Itérations thermiques"/><TextBox Text="{Binding ThermalIterations}"/>
-          <TextBlock Text="Angle du vent"/><TextBox Text="{Binding WindAngle}"/>
-          <TextBlock Text="Dossier de sortie"/><TextBox Text="{Binding OutputDirectory}"/>
-          <TextBlock Text="Préfixe des fichiers"/><TextBox Text="{Binding FilePrefix}"/>
+          <Border Classes="card">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="cardTitle" Text="2) Taille du Monde" />
+              <ComboBox ItemsSource="{Binding SizePresets}" SelectedItem="{Binding WorldSizePreset}" />
+              <TextBlock Text="{Binding SizeHint}" Foreground="#A9B2C3" />
+            </StackPanel>
+          </Border>
 
-          <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
-            <Button Content="Générer" Command="{Binding GenerateCommand}" Width="100"/>
-            <Button Content="Annuler" Command="{Binding CancelCommand}" Width="100"/>
-            <Button Content="Sauvegarder / Exporter" Command="{Binding ExportCommand}" Width="160"/>
+          <Border Classes="card">
+            <StackPanel Spacing="10">
+              <TextBlock Classes="cardTitle" Text="3) Style de Terrain" />
+
+              <TextBlock Text="Relief global" />
+              <Slider Minimum="0" Maximum="5" Value="{Binding ReliefLevel}" TickFrequency="1" IsSnapToTickEnabled="True" />
+              <TextBlock Text="{Binding ReliefLabel}" Foreground="#9BC9FF" />
+
+              <TextBlock Text="Intensité des montagnes" />
+              <Slider Minimum="0" Maximum="3" Value="{Binding MountainIntensity}" TickFrequency="1" IsSnapToTickEnabled="True" />
+              <TextBlock Text="{Binding MountainLabel}" Foreground="#9BC9FF" />
+
+              <TextBlock Text="Nombre d'océans" />
+              <Slider Minimum="0" Maximum="2" Value="{Binding OceanAmount}" TickFrequency="1" IsSnapToTickEnabled="True" />
+              <TextBlock Text="{Binding OceanLabel}" Foreground="#9BC9FF" />
+
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="Rivières" VerticalAlignment="Center" />
+                <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding RiversEnabled}" OnContent="Activé" OffContent="Désactivé" />
+              </DockPanel>
+
+              <TextBlock Text="Érosion naturelle" />
+              <Slider Minimum="0" Maximum="3" Value="{Binding ErosionLevel}" TickFrequency="1" IsSnapToTickEnabled="True" />
+              <TextBlock Text="{Binding ErosionLabel}" Foreground="#9BC9FF" />
+            </StackPanel>
+          </Border>
+
+          <Border Classes="card">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="cardTitle" Text="4) Paramètres Minecraft" />
+              <TextBlock Text="Minecraft moderne utilise Y -64 à 319." Foreground="#8BD9A2" />
+
+              <TextBlock Text="Niveau de la mer (recommandé: 62)" />
+              <TextBox Text="{Binding SeaLevel}" />
+
+              <TextBlock Text="Altitude minimale" />
+              <TextBox Text="{Binding MinY}" />
+
+              <TextBlock Text="Altitude maximale" />
+              <TextBox Text="{Binding MaxY}" />
+            </StackPanel>
+          </Border>
+
+          <Border Classes="card">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="cardTitle" Text="5) Seed" />
+              <TextBox Text="{Binding Seed}" Watermark="Entrez une seed..." />
+              <Button Content="🎲 Random seed" Command="{Binding RandomSeedCommand}" ToolTip.Tip="Génère une seed aléatoire." />
+            </StackPanel>
+          </Border>
+
+          <Border Classes="card">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="cardTitle" Text="7) Export" />
+              <TextBlock Text="Formats: PNG Heightmap, previews, WorldPainter Ready (16-bit)." Foreground="#A9B2C3" />
+              <TextBlock Text="Dossier de sortie" />
+              <TextBox Text="{Binding OutputDirectory}" />
+              <TextBlock Text="Préfixe" />
+              <TextBox Text="{Binding FilePrefix}" />
+            </StackPanel>
+          </Border>
+
+          <Button Content="Mode Expert" Command="{Binding ToggleExpertModeCommand}" />
+
+          <Border Classes="card" IsVisible="{Binding IsExpertMode}">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="cardTitle" Text="Mode Expert (paramètres avancés)" />
+              <TextBlock Text="Octaves" /><TextBox Text="{Binding Octaves}" />
+              <TextBlock Text="Gouttelettes" /><TextBox Text="{Binding ErosionDroplets}" />
+              <TextBlock Text="Thermal iterations" /><TextBox Text="{Binding ThermalIterations}" />
+              <TextBlock Text="Étapes d'érosion" /><TextBox Text="{Binding ErosionSteps}" />
+              <TextBlock Text="Angle du vent" /><TextBox Text="{Binding WindAngle}" />
+            </StackPanel>
+          </Border>
+
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Classes="primary" Content="Générer" Command="{Binding GenerateCommand}" Width="140" />
+            <Button Content="Annuler" Command="{Binding CancelCommand}" Width="110" />
+            <Button Content="Export direct" Command="{Binding ExportCommand}" Width="130" />
           </StackPanel>
 
-          <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressValue}" Height="16"/>
-          <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+          <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressValue}" Height="16" />
+          <TextBlock Text="{Binding Status}" TextWrapping="Wrap" Foreground="#D8DEE9" />
         </StackPanel>
       </ScrollViewer>
     </Border>
 
-    <TextBlock Grid.Column="2" Grid.Row="0" Text="Aperçu" FontSize="20" FontWeight="Bold" />
-    <Border Grid.Column="2" Grid.Row="1" CornerRadius="8" Padding="8" Background="#121212">
-      <ScrollViewer>
-        <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
-      </ScrollViewer>
+    <Border Grid.Column="2" Classes="card">
+      <Grid RowDefinitions="Auto,Auto,*">
+        <TextBlock Classes="sectionTitle" Text="6) Aperçu Live" />
+        <TextBlock Grid.Row="1" Text="Relief + eau + montagnes + biomes probables (mise à jour auto)." Foreground="#A9B2C3" Margin="0,6,0,10" />
+        <Border Grid.Row="2" Background="#101318" CornerRadius="10" Padding="8">
+          <ScrollViewer>
+            <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
+          </ScrollViewer>
+        </Border>
+      </Grid>
     </Border>
   </Grid>
 </Window>
