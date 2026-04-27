@@ -97,10 +97,27 @@ function ridgedFbm(nx, ny, seed, octaves = 4) {
   return ampSum > 0 ? sum / ampSum : 0;
 }
 
+function createIslandBlobs(seed, styleCfg) {
+  const rand = createSeededRandom(`blob-${seed}`);
+  const blobCount = 4 + Math.floor(rand() * 3);
+  const blobs = [];
+  for (let i = 0; i < blobCount; i++) {
+    const angle = rand() * Math.PI * 2;
+    const dist = (0.05 + rand() * 0.28) * (i === 0 ? 0.2 : 1);
+    const cx = Math.cos(angle) * dist;
+    const cy = Math.sin(angle) * dist;
+    const sx = 0.48 + rand() * 0.32 + styleCfg.drama * 0.1;
+    const sy = 0.42 + rand() * 0.28 + styleCfg.coastBreak * 0.08;
+    blobs.push({ cx, cy, sx, sy, weight: i === 0 ? 1.35 : 0.72 + rand() * 0.3 });
+  }
+  return blobs;
+}
+
 function generateLandPotential(width, height, config, seed) {
   const land = new Float32Array(width * height);
   const sizeCfg = ISLAND_SIZE[config.islandSize] || ISLAND_SIZE.medium;
   const styleCfg = STYLE[config.style] || STYLE.balanced;
+  const blobs = createIslandBlobs(seed, styleCfg);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -108,18 +125,35 @@ function generateLandPotential(width, height, config, seed) {
       const nx = (x / (width - 1)) * 2 - 1;
       const ny = (y / (height - 1)) * 2 - 1;
 
-      const warpX = (fbm2D(nx * 1.6, ny * 1.6, 4, 2, 0.5, seed + 10) - 0.5) * styleCfg.warp;
-      const warpY = (fbm2D(nx * 1.6 + 42.7, ny * 1.6 - 18.3, 4, 2, 0.5, seed + 11) - 0.5) * styleCfg.warp;
+      const warpX = (fbm2D(nx * 1.5, ny * 1.5, 4, 2, 0.5, seed + 10) - 0.5) * (styleCfg.warp + 0.08);
+      const warpY = (fbm2D(nx * 1.5 + 42.7, ny * 1.5 - 18.3, 4, 2, 0.5, seed + 11) - 0.5) * (styleCfg.warp + 0.08);
       const wx = nx + warpX;
       const wy = ny + warpY;
 
-      const dist = Math.hypot(wx * (1 + styleCfg.drama * 0.1), wy * (1 - styleCfg.drama * 0.05));
-      const radial = 1 - smoothstep(sizeCfg.radius * 0.65, sizeCfg.radius, dist);
-      const coast = (fbm2D(nx * 4 + 9.1, ny * 4 - 3.4, 4, 2, 0.5, seed + 20) - 0.5) * 0.7;
-      const macro = (fbm2D(nx * 1.2 - 7, ny * 1.2 + 2, 3, 2, 0.5, seed + 30) - 0.5) * 0.5;
-      const asym = (fbm2D(nx * 0.8 + 80, ny * 0.8 - 35, 2, 2, 0.5, seed + 40) - 0.5) * 0.45;
+      const continentalNoise = (fbm2D(nx * 0.8 - 1.7, ny * 0.8 + 2.3, 4, 2, 0.5, seed + 16) - 0.5) * 0.38;
+      let blobShape = 0;
+      for (const blob of blobs) {
+        const dx = (wx - blob.cx) / blob.sx;
+        const dy = (wy - blob.cy) / blob.sy;
+        const d = Math.hypot(dx, dy);
+        const influence = (1 - smoothstep(0.52, 1.1, d)) * blob.weight;
+        if (influence > blobShape) blobShape = influence;
+      }
 
-      land[i] = radial * 1.22 + coast * (0.18 + styleCfg.coastBreak * 0.12) + macro * 0.45 + asym * 0.35;
+      const dist = Math.hypot(wx * (1 + styleCfg.drama * 0.12), wy * (1 - styleCfg.drama * 0.06));
+      const radial = 1 - smoothstep(sizeCfg.radius * 0.54, sizeCfg.radius * 1.02, dist);
+      const coast = (fbm2D(nx * 4 + 9.1, ny * 4 - 3.4, 4, 2, 0.5, seed + 20) - 0.5) * 0.95;
+      const macro = (fbm2D(nx * 1.2 - 7, ny * 1.2 + 2, 3, 2, 0.5, seed + 30) - 0.5) * 0.5;
+      const asym = (fbm2D(nx * 0.8 + 80, ny * 0.8 - 35, 3, 2, 0.5, seed + 40) - 0.5) * 0.62;
+      const shelf = (fbm2D(wx * 2.4 - 9, wy * 2.4 + 4, 3, 2, 0.5, seed + 41) - 0.5) * 0.35;
+
+      land[i] = radial * 0.92
+        + blobShape * 0.78
+        + continentalNoise * 0.26
+        + coast * (0.22 + styleCfg.coastBreak * 0.15)
+        + macro * 0.38
+        + asym * 0.34
+        + shelf * 0.18;
     }
   }
 
@@ -346,7 +380,7 @@ function generateLandBaseHeight(heightMap, landMask, distanceToWater, width, hei
       const i = y * width + x;
       if (!landMask[i]) continue;
       const dWater = distanceToWater[i];
-      const coastRise = smoothstep(1, Math.max(24, width * 0.12), dWater);
+      const coastRise = smoothstep(2, Math.max(16, width * 0.06), dWater);
       const beachNoise = fbm2D(x / width * 8.5, y / height * 8.5, 2, 2, 0.5, seed + 500) - 0.5;
       const beachWidth = 4 + (beachNoise + 0.5) * 7;
       if (dWater <= beachWidth) {
@@ -372,7 +406,7 @@ function generateMountainMask(landMask, distanceToWater, width, height, config, 
       if (!landMask[i]) continue;
       const macro = fbm2D(x / width * 1.1, y / height * 1.1, 4, 2, 0.5, seed + 610);
       const ridgedIntent = ridgedFbm(x / width * 1.4 + 3, y / height * 1.4 - 5, seed + 611, 3);
-      const inland = smoothstep(20, Math.max(72, width * 0.16), distanceToWater[i]);
+      const inland = smoothstep(10, Math.max(36, width * 0.08), distanceToWater[i]);
       const intent = macro * 0.6 + ridgedIntent * 0.4;
       const candidate = smoothstep(Math.max(0.2, reliefBias - styleCfg.mountainBias * 0.2), 0.92, intent) * inland;
       mask[i] = clamp(candidate, 0, 1);
@@ -397,7 +431,7 @@ function applyHills(heightMap, landMask, distanceToWater, width, height, reliefC
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       if (!landMask[i]) continue;
-      const inland = smoothstep(6, Math.max(40, width * 0.1), distanceToWater[i]);
+      const inland = smoothstep(4, Math.max(24, width * 0.06), distanceToWater[i]);
       const hill = (fbm2D(x / width * 5.2, y / height * 5.2, 4, 2, 0.5, seed + 800) - 0.5) * 2;
       heightMap[i] += hill * reliefCfg.hillAmp * inland;
     }
@@ -409,7 +443,7 @@ function applyMountains(heightMap, landMask, mountainMask, distanceToWater, widt
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       if (!landMask[i]) continue;
-      const inland = smoothstep(12, Math.max(60, width * 0.14), distanceToWater[i]);
+      const inland = smoothstep(8, Math.max(32, width * 0.09), distanceToWater[i]);
       const ridge = ridgedFbm(x / width * 3.2, y / height * 3.2, seed + 900, 5);
       const m = Math.max(mountainMask[i], inland * 0.22);
       heightMap[i] += ridge * ridge * m * reliefCfg.mountainAmp;
@@ -549,7 +583,7 @@ function reinforceRelief(heightMap, landMask, distanceToWater, width, height, re
     for (let x = 0; x < width; x++) {
       const i = y * width + x;
       if (!landMask[i]) continue;
-      const inland = smoothstep(14, Math.max(64, width * 0.18), distanceToWater[i]);
+      const inland = smoothstep(10, Math.max(34, width * 0.1), distanceToWater[i]);
       const ridge = ridgedFbm(x / width * 2.6 + 11, y / height * 2.6 - 9, seed + 1230, 4);
       heightMap[i] += ridge * inland * reliefCfg.mountainAmp * 0.22;
     }
@@ -562,7 +596,7 @@ function cleanupHeights(heightMap, landMask, distanceToWater, width, height, con
     heightMap[i] = clamp(heightMap[i], config.minY, config.maxY);
 
     if (landMask[i]) {
-      const inlandLift = smoothstep(5, Math.max(28, width * 0.15), distanceToWater[i]) * 42;
+      const inlandLift = smoothstep(4, Math.max(20, width * 0.08), distanceToWater[i]) * 42;
       heightMap[i] = Math.max(config.seaLevel, heightMap[i], config.seaLevel + inlandLift * 0.5);
     } else {
       heightMap[i] = Math.min(config.seaLevel - 1, heightMap[i]);
